@@ -1,0 +1,39 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "ESP32-S3 + MicroPython (manual)",
+            "compilerPath": "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe",
+            "intelliSenseMode": "gcc-x64",
+            "cStandard": "c11",
+            "defines": [
+                "__XTENSA__",
+                "ESP_PLATFORM",
+                "CONFIG_IDF_TARGET_ESP32S3",
+                "MICROPY_INCLUDED",
+                "MICROPY_PY_FREERTOS=1"
+            ],
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:\\Users\\82542\\code\\py\\MicroPython\\mod\\camera_lr\\**",
+                /* toolchain libc */
+                "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/picolibc/include",
+                /* ESP-IDF 基础 */
+                "C:/Users/82542/test_include/esp-idf/components/**",
+                /* ===== 关键：目标相关 ===== */
+                "C:/Users/82542/test_include/esp-idf/components/soc/esp32s3/include",
+                "C:/Users/82542/test_include/esp-idf/components/hal/esp32s3/include",
+                /* FreeRTOS Xtensa */
+                "C:/Users/82542/test_include/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include",
+                "C:/Users/82542/test_include/esp-idf/components/freertos/FreeRTOS-Kernel/include",
+                /* 编译时生成 或 编译时下载依赖 */
+                "C:\\Users\\82542\\test_include\\include",
+                /* MicroPython */
+                "C:/Users/82542/test_include/micropython/ports/esp32/**",
+                "C:/Users/82542/test_include/micropython",
+                "C:/Users/82542/test_include/micropython/ports/esp32",
+                "C:/Users/82542/test_include/micropython/extmod"
+            ]
+        }
+    ]
+}

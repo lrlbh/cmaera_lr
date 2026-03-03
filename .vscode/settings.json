@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "C:\\Users\\82542\\test_include\\mpy_user_include",
+        "./py_mod",
+    ],
+}
