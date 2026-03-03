@@ -1,4 +1,5 @@
 ### 目录结构
+~~~ shell
 ├── LICENSE
 ├── README.md
 ├── build.ps1
@@ -21,3 +22,6 @@
     ├── sdkconfig.board
     ├── sdkconfig-mpy
     └── sdkconfig-参考
+
+~~~
+
