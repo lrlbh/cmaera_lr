@@ -1,5 +1,5 @@
 import _thread
-
+import machine
 import socket
 import binascii
 import hashlib
@@ -40,7 +40,13 @@ class WsScoket():
         self.socket.sendall(data)
 
 
+class t套接字上限行为():
+    重启 = 0
+    等待 = 1
+
+
 class Server():
+
     def __init__(self, ip, port, listen):
         if ":" in ip:
             ipv = socket.AF_INET6
@@ -66,13 +72,23 @@ class Server():
         self.ws = []
 
     # 在线程中，持续获取连接
-    def _work(self):
+    def _work(self, 套接字上限):
         while True:
             if len(self.ws) + len(self.http) > 3:
                 time.sleep(0.3)
                 continue
-
-            conn, addr = self.accept_all()
+            try:
+                conn, addr = self.accept_all()
+            except OSError as e:
+                if e.errno != 23:
+                    raise
+                if 套接字上限 == t套接字上限行为.重启:
+                    machine.reset()
+                elif 套接字上限 == t套接字上限行为.等待:
+                    time.sleep(0.3)
+                    continue
+                else:
+                    raise Exception("未定义的套装字上限行为")
 
             if isinstance(conn, WsScoket):
                 self.ws.append((conn, addr))
@@ -80,9 +96,9 @@ class Server():
                 self.http.append((conn, addr))
 
     # 启动自动获取连接线程
-
-    def run_thr(self):
-        _thread.start_new_thread(self._work, ())
+    # rst,没有套接字资源时是否重启
+    def run_thr(self, 套接字上限: t套接字上限行为 = t套接字上限行为.等待):
+        _thread.start_new_thread(self._work, (套接字上限,))
         return self
 
     # 处理 ws和http_get 请求头
@@ -144,8 +160,8 @@ class Server():
 
                 # 没有确认是否是http
                 return self.conn, self.addr
-            except Exception as E:
-                print(E)
+            except Exception as e:
+                # print(e)
                 self.conn.close()
 
     # 手动获取一个ws连接,丢掉其他连接

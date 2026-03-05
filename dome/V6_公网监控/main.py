@@ -1,8 +1,6 @@
 import cam_lsl
-import wifilr
-import wifi
-import cameralr
-import ws
+import wifi_lsl
+import ws_lsl
 import time
 
 
@@ -41,6 +39,7 @@ html = """<!DOCTYPE html>
 
         const status = document.getElementById("status");
         const img = document.getElementById("video");
+        img.style.transform = "scaleY(-1)";
         const fps = document.getElementById("fps");
         const szie_n = document.getElementById("szie_n");
 
@@ -103,27 +102,44 @@ html_data = (
     html
 )
 
+"""
+    代码开始
+    代码开始
+    代码开始
+"""
 
 # 初始化摄像头
-cam = cam_lsl.cam()
-cam.set_分辨率(cam_lsl.t图片分辨率.t_1280x720)
-cameralr.af_run()
-cam.set_水平镜像(True)
+print("开始初始化摄像头....")
+cam = cam_lsl.Cam()
+cam.set_分辨率(cam_lsl.t参数.t图片分辨率.t_1280x720)
+print(f"hts: {cam.get_hts()}  vts: {cam.get_vts()}")
+try:  # 开启自动对焦
+    cam.af_run()
+except Exception as e:
+    print(e)
+# cam.set_水平镜像(True)
+# cam.set_垂直翻转(True)
 
 
 # 连接WiFi
-wifi.WIFILSL(account={
+print("开始连接wifi,协商ipv6公网地址....")
+wifi_lsl.WIFI(account={
     "CMCC-Ef6Z": "ddtzpts9"
 }, v6公网=True).conn_thr()
 
-# 打印ipv6连接地址
-for v6 in wifi.WIFILSL.get_v6_str():
+
+# 等待ipv6公网连接成功
+print("等待V6公网协商成功,打印URL....")
+for v6 in wifi_lsl.WIFI.get_v6_str_阻塞():
     print(f"http://[{v6}]:30000")
 
 
 # 创建 ws server ||  run_thr自动处理连接
-s = ws.Server("::", 30000, 3).run_thr()
+print("创建服务器....")
+s = ws_lsl.Server("::", 30000, 3).run_thr()
 
+
+print("开始工作....")
 conn = None
 while True:
 

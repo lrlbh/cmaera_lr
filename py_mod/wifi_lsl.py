@@ -6,7 +6,7 @@ import _thread
 import wifilr
 
 
-class WIFILSL():
+class WIFI():
 
     def __init__(self, account={"12345678": "12345678",
                                 "CMCC-Ef6Z": "ddtzpts9",
@@ -40,6 +40,45 @@ class WIFILSL():
     @staticmethod
     def get_v6_str():
         return wifilr.get_ipv6_addr()
+
+    @staticmethod
+    def get_v6_str_阻塞(间隔ms=100):
+        while True:
+            v6s = wifilr.get_ipv6_addr()
+            for v6 in v6s:
+                if WIFI.is_公网_v6(v6):
+                    return v6s
+            time.sleep_ms(间隔ms)
+
+    # 我遇到的ipv6公网地址全部是2开头
+    # 我没有查证,ipv6分配规则
+    # 这是gpt实现的函数
+    @staticmethod
+    def is_公网_v6(addr):
+        if not addr:
+            return False
+
+        addr = addr.lower()
+
+        # 基本格式检查
+        if ":" not in addr:
+            return False
+
+        # 排除特殊地址
+        if addr == "::" or addr == "::1":
+            return False
+
+        if addr.startswith("fe80"):
+            return False
+
+        if addr.startswith("fc") or addr.startswith("fd"):
+            return False
+
+        # 公网 ipv6 范围 2000::/3
+        if addr[0] in ("2", "3"):
+            return True
+
+        return False
 
     # 多线程 wifi
     def conn_thr(self, ssid=None, passwd=None):
@@ -81,7 +120,7 @@ class WIFILSL():
         while True:
             ret = wifilr.get_ipv6_addr()
             for v6 in ret:
-                if v6[0:1] == "2":
+                if WIFI.is_公网_v6(v6):
                     return
             time.sleep(0.3)
 
@@ -123,7 +162,7 @@ class WIFILSL():
         while True:
             ret = wifilr.get_ipv6_addr()
             for v6 in ret:
-                if v6[0:1] == "2":
+                if WIFI.is_公网_v6(v6):
                     return
             await asyncio.sleep(0.3)
 

@@ -19,9 +19,9 @@ wsl ./build.sh
 Check-ExitCode
 
 Write-Host "擦除"
-esptool --chip esp32S3 --port COM5  erase_flash 
+esptool --chip esp32S3 --port COM36  erase_flash 
 Check-ExitCode
 
 Write-Host "烧录"
-esptool --chip ESP32S3 --port COM5 write_flash -z 0x0  ./firmware.bin
+esptool --chip ESP32S3 --port COM36 write_flash -z 0x0  ./firmware.bin
 Check-ExitCode

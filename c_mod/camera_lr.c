@@ -289,6 +289,15 @@ static mp_obj_t set_xclk(mp_obj_t timer, mp_obj_t xclk)
 }
 static MP_DEFINE_CONST_FUN_OBJ_2(set_xclk_obj, set_xclk);
 
+// 获取摄像头型号
+static mp_obj_t get_pid(void)
+{
+    sensor_t *s = get_s();
+
+    return mp_obj_new_int(s->id.PID);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(get_pid_obj, get_pid);
+
 /*----------------------------------------------------------
  * 模块定义
  *----------------------------------------------------------*/
@@ -308,6 +317,7 @@ static const mp_rom_map_elem_t camera_module_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR_set_jepg_quality), MP_ROM_PTR(&set_jepg_quality_obj)},
     {MP_ROM_QSTR(MP_QSTR_set_hmirror), MP_ROM_PTR(&set_hmirror_obj)},
     {MP_ROM_QSTR(MP_QSTR_set_vflip), MP_ROM_PTR(&set_vflip_obj)},
+    {MP_ROM_QSTR(MP_QSTR_get_pid), MP_ROM_PTR(&get_pid_obj)},
 
     // 时钟设置
     {MP_ROM_QSTR(MP_QSTR_set_pll), MP_ROM_PTR(&set_pll_obj)},
