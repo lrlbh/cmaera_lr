@@ -1,6 +1,7 @@
 {
     "python.analysis.extraPaths": [
-        "C:\\Users\\82542\\test_include\\mpy_user_include",
+        // "C:\\Users\\82542\\test_include\\mpy_user_include",
         "./py_mod",
+        "./py_mod/c_mod智能提示",
     ],
 }

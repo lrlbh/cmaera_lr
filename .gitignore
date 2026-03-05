@@ -1,5 +1,5 @@
 # /.vscode/
 /open_code/*
 /res/
-# config.ini
 *.bin
+__pycache__

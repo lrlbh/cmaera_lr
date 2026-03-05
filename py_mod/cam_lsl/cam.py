@@ -1,73 +1,10 @@
 import cameralr
 
-
-class t图片分辨率:
-    """
-    图像尺寸枚举类 (由 C 语言枚举转换)
-    索引从 0 开始递增
-    """
-    # 基础尺寸
-    t_96x96 = 0
-    t_160x120 = 1   # QQVGA
-    t_128x128 = 2
-    t_176x144 = 3   # QCIF
-    t_240x176 = 4   # HQVGA
-    t_240x240 = 5
-    t_320x240 = 6   # QVGA
-    t_320x320 = 7
-    t_400x296 = 8   # CIF
-    t_480x320 = 9   # HVGA
-
-    # 标准尺寸
-    t_640x480 = 10  # VGA
-    t_800x600 = 11  # SVGA
-    t_1024x768 = 12  # XGA
-    t_1280x720 = 13  # HD
-    t_1280x1024 = 14  # SXGA
-    t_1600x1200 = 15  # UXGA
-
-    # 3MP 传感器
-    t_1920x1080 = 16  # FHD
-    t_720x1280 = 17  # P_HD
-    t_864x1536 = 18  # P_3MP
-    t_2048x1536 = 19  # QXGA
-
-    # 5MP 传感器
-    t_2560x1440 = 20  # QHD
-    t_2560x1600 = 21  # WQXGA
-    t_1080x1920 = 22  # P_FHD
-    t_2560x1920 = 23  # QSXGA
-    t_2592x1944 = 24  # 5MP
-
-    t_invalid = 25
+from . import t寄存器
+from . import t参数
 
 
-class t图片格式:
-    """
-    统一的图片格式类
-    包含：分辨率尺寸 (size) 和 像素格式 (pixformat)
-    """
-
-    # --- 1. 像素格式 (Pixel Format) ---
-    # 按照 C 语言枚举顺序，从 0 开始
-    rgb565 = 0   # 2BPP/RGB565
-    yuv422 = 1   # 2BPP/YUV422
-    yuv420 = 2   # 1.5BPP/YUV420
-    grayscale = 3   # 1BPP/GRAYSCALE
-    jpeg = 4   # JPEG/COMPRESSED
-    rgb888 = 5   # 3BPP/RGB888
-    raw = 6   # RAW
-    rgb444 = 7   # 3BP2P/RGB444
-    rgb555 = 8   # 3BP2P/RGB555
-    raw8 = 9   # RAW 8-bit
-
-
-class t内存位置:
-    psram = 0
-    dram = 1
-
-
-class cam:
+class Cam:
     def __init__(
         self,
         data_0_7=[21, 48, 45, 47, 14, 12, 11, 9], p_clk=13,
@@ -75,9 +12,9 @@ class cam:
         vsync=17, href=8,
         pwdn=-1, rst=-1, xclk=-1,
         xclk_freq=24_000_000, xclk_pwm_控制器=0, xclk_pwm_通道=0,
-        t图片格式=t图片格式.jpeg, t图片分辨率=t图片分辨率.t_2592x1944,
+        t图片格式=t参数.t图片格式.jpeg, t图片分辨率=t参数.t图片分辨率.t_2592x1944,
         t图片质量=12, t缓冲区个数=2,
-        t内存位置=t内存位置.psram, t最新帧=False, i2c_控制器=0
+        t内存位置=t参数.t内存位置.psram, t最新帧=False, i2c_控制器=0
     ):
         # 只保存成员变量，不操作摄像头
         self.data_0_7 = data_0_7
@@ -100,10 +37,12 @@ class cam:
         self.t最新帧 = t最新帧
         self.i2c_控制器 = i2c_控制器
 
+        self.t寄存器 = None
         self._buf_p = None
         self.rstart()
 
     # 修改成员变量需要重新初始化摄像头
+
     def rstart(self):
         # 真正初始化摄像头
         cameralr.deinit()
@@ -136,17 +75,58 @@ class cam:
             "sccb_i2c_port": self.i2c_控制器,
         })
 
+        self.t寄存器 = t寄存器.CAMERA_REGISTRY.get(self.get_pid())
+
+    # 修改分辨率好像会取消自动对焦，这里先搞个假的，方便点
+    def af_stop(self):
+        t = self.t图片分辨率
+        # 搞个小的分辨率，避免超时
+        self.set_分辨率(t参数.t图片分辨率.t_96x96)
+        self.set_分辨率(t)
+
+    def get_pid(self):
+        return cameralr.get_pid()
+
+    def get_hts(self):
+        # 读取高位并左移 8 位，再读取低位进行组合
+        high = self.get_reg(self.t寄存器.hts_h, 0xFF)
+        low = self.get_reg(self.t寄存器.hts_l, 0xFF)
+        return (high << 8) | low
+
+    def set_hts(self, value: int):
+        # 限制范围在 16 位以内 (0-65535)
+        value &= 0xFFFF
+        # 拆分高低位
+        high = (value >> 8) & 0xFF
+        low = value & 0xFF
+        # 分别写入
+        self.set_reg(self.t寄存器.hts_h, 0xFF, high)
+        self.set_reg(self.t寄存器.hts_l, 0xFF, low)
+
+    def get_vts(self):
+        high = self.get_reg(self.t寄存器.vts_h, 0xFF)
+        low = self.get_reg(self.t寄存器.vts_l, 0xFF)
+        return (high << 8) | low
+
+    def set_vts(self, value: int):
+        value &= 0xFFFF
+        high = (value >> 8) & 0xFF
+        low = value & 0xFF
+        self.set_reg(self.t寄存器.vts_h, 0xFF, high)
+        self.set_reg(self.t寄存器.vts_l, 0xFF, low)
+
+    def get_sys_clk(self):
+        pass
+
+    def get_p_clk(self):
+        pass
+
     def deinit(self):
         cameralr.deinit()
 
-    def _get_pid(self):
-        high = cameralr.get_reg(0x300A, 0xFF)
-        low = cameralr.get_reg(0x300B, 0xFF)
-        return (high << 8) | low
-
     def af_run(self):
-        pid = self._get_pid()
-        if pid != 0x5640:
+        pid = self.get_pid()
+        if pid != t参数.PID_VALUE.OV5640:
             raise RuntimeError(
                 "摄像头不支持自动对焦, 摄像头PID=0x%04X" % pid)
         cameralr.af_run()
