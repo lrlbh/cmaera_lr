@@ -3,7 +3,10 @@ import time
 import asyncio
 import collections
 import _thread
-import wifilr
+try:
+    import wifilr
+except:
+    pass
 
 
 class WIFI():
@@ -18,6 +21,7 @@ class WIFI():
 
         self.wlan = network.WLAN(network.STA_IF)
         self.wlan.active(True)
+        self.wlan.disconnect()
 
         # 没有找到方便点，非侵入的软重启
         # 使用静态ip加快单片机硬重启
@@ -50,9 +54,8 @@ class WIFI():
                     return v6s
             time.sleep_ms(间隔ms)
 
-    # 我遇到的ipv6公网地址全部是2开头
-    # 我没有查证,ipv6分配规则
-    # 这是gpt实现的函数
+    # 我遇到的ipv6公网地址都是是2开头
+    # 这是gpt实现的函数，我没有查证ipv6分配规则
     @staticmethod
     def is_公网_v6(addr):
         if not addr:
@@ -90,8 +93,9 @@ class WIFI():
             time.sleep(self.检查间隔)
 
     def conn_one(self, ssid=None, passwd=None):
-        if self.wlan.isconnected():
-            self._get_v6()
+
+        # if self.wlan.isconnected():
+        #     self._get_v6()
 
         while not self.wlan.isconnected():
             acc = self._获取需要连接的wifi(ssid, passwd)
@@ -113,6 +117,12 @@ class WIFI():
         if not self.v6公网:
             return
 
+        # # 如果有v6地址就不协商了
+        # ret = wifilr.get_ipv6_addr()
+        # for v6 in ret:
+        #     if WIFI.is_公网_v6(v6):
+        #         return
+
         # 协商v6地址
         wifilr.get_ipv6()
 
@@ -127,12 +137,12 @@ class WIFI():
     # async wifi
     async def conn_async(self, ssid=None, passwd=None):
         while True:
-            await self.conn_one_async(ssid, passwd)
+            await self._conn_one_async(ssid, passwd)
             await asyncio.sleep(self.检查间隔)
 
     async def _conn_one_async(self, ssid=None, passwd=None):
-        if self.wlan.isconnected():
-            await self._get_v6_async()
+        # if self.wlan.isconnected():
+        #     await self._get_v6_async()
 
         while not self.wlan.isconnected():
             acc = self._获取需要连接的wifi(ssid, passwd)
@@ -145,7 +155,7 @@ class WIFI():
                 while (time.time() - s) <= self.单个wifi尝试时间:
                     if self.wlan.isconnected():
                         # webrepl.start(password="1234")
-                        await self.get_v6_async()
+                        await self._get_v6_async()
                         return
                     await asyncio.sleep(0.1)
 
@@ -154,6 +164,12 @@ class WIFI():
     async def _get_v6_async(self):
         if not self.v6公网:
             return
+
+        # # 如果有v6地址就不协商了
+        # ret = wifilr.get_ipv6_addr()
+        # for v6 in ret:
+        #     if WIFI.is_公网_v6(v6):
+        #         return
 
         # 协商v6地址
         wifilr.get_ipv6()

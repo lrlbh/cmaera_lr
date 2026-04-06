@@ -258,10 +258,10 @@ static mp_obj_t set_pll(size_t n_args, const mp_obj_t *args)
     int bypass = mp_obj_get_int(args[0]);
     int mul = mp_obj_get_int(args[1]);
     int sys = mp_obj_get_int(args[2]);
-    int root = mp_obj_get_int(args[3]);
-    int pre = mp_obj_get_int(args[4]);
-    int seld5 = mp_obj_get_int(args[5]);
-    int pclken = mp_obj_get_int(args[6]);
+    int pre = mp_obj_get_int(args[3]);
+    int root = mp_obj_get_int(args[4]);
+    int pclk_root = mp_obj_get_int(args[5]);
+    int pclk_manual = mp_obj_get_int(args[6]);
     int pclk = mp_obj_get_int(args[7]);
 
     int ret = s->set_pll(
@@ -269,10 +269,10 @@ static mp_obj_t set_pll(size_t n_args, const mp_obj_t *args)
         bypass,
         mul,
         sys,
-        root,
         pre,
-        seld5,
-        pclken,
+        root,
+        pclk_root,
+        pclk_manual,
         pclk);
 
     return mp_obj_new_int(ret);

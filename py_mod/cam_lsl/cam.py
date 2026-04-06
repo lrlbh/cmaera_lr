@@ -7,14 +7,25 @@ from . import t参数
 class Cam:
     def __init__(
         self,
-        data_0_7=[21, 48, 45, 47, 14, 12, 11, 9], p_clk=13,
-        sda=7, scl=15,
-        vsync=17, href=8,
-        pwdn=-1, rst=-1, xclk=-1,
-        xclk_freq=24_000_000, xclk_pwm_控制器=0, xclk_pwm_通道=0,
-        t图片格式=t参数.t图片格式.jpeg, t图片分辨率=t参数.t图片分辨率.t_2592x1944,
-        t图片质量=12, t缓冲区个数=2,
-        t内存位置=t参数.t内存位置.psram, t最新帧=False, i2c_控制器=0
+        data_0_7=[21, 48, 45, 47, 14, 12, 11, 9],
+        p_clk=13,
+        sda=7,
+        scl=15,
+        vsync=17,
+        href=8,
+        pwdn=-1,
+        rst=-1,
+        xclk=-1,
+        xclk_freq=24_000_000,
+        xclk_pwm_控制器=0,
+        xclk_pwm_通道=0,
+        t图片格式=t参数.t图片格式.jpeg,
+        t图片分辨率=t参数.t图片分辨率.t_2592x1944,
+        t图片质量=12,
+        t缓冲区个数=2,
+        t内存位置=t参数.t内存位置.psram,
+        t最新帧=False,
+        i2c_控制器=0,
     ):
         # 只保存成员变量，不操作摄像头
         self.data_0_7 = data_0_7
@@ -46,34 +57,36 @@ class Cam:
     def rstart(self):
         # 真正初始化摄像头
         cameralr.deinit()
-        cameralr.init({
-            "pin_pwdn": self.pwdn,
-            "pin_reset": self.rst,
-            "pin_xclk": self.xclk,
-            "pin_sccb_sda": self.sda,
-            "pin_sccb_scl": self.scl,
-            "pin_d7": self.data_0_7[7],
-            "pin_d6": self.data_0_7[6],
-            "pin_d5": self.data_0_7[5],
-            "pin_d4": self.data_0_7[4],
-            "pin_d3": self.data_0_7[3],
-            "pin_d2": self.data_0_7[2],
-            "pin_d1": self.data_0_7[1],
-            "pin_d0": self.data_0_7[0],
-            "pin_vsync": self.vsync,
-            "pin_href": self.href,
-            "pin_pclk": self.p_clk,
-            "xclk_freq_hz": self.xclk_freq,
-            "ledc_timer": self.xclk_pwm_控制器,
-            "ledc_channel": self.xclk_pwm_通道,
-            "pixel_format": self.t图片格式,
-            "frame_size": self.t图片分辨率,
-            "jpeg_quality": self.t图片质量,
-            "fb_count": self.t缓冲区个数,
-            "fb_location": self.t内存位置,
-            "grab_mode": 0 if self.t最新帧 else 1,
-            "sccb_i2c_port": self.i2c_控制器,
-        })
+        cameralr.init(
+            {
+                "pin_pwdn": self.pwdn,
+                "pin_reset": self.rst,
+                "pin_xclk": self.xclk,
+                "pin_sccb_sda": self.sda,
+                "pin_sccb_scl": self.scl,
+                "pin_d7": self.data_0_7[7],
+                "pin_d6": self.data_0_7[6],
+                "pin_d5": self.data_0_7[5],
+                "pin_d4": self.data_0_7[4],
+                "pin_d3": self.data_0_7[3],
+                "pin_d2": self.data_0_7[2],
+                "pin_d1": self.data_0_7[1],
+                "pin_d0": self.data_0_7[0],
+                "pin_vsync": self.vsync,
+                "pin_href": self.href,
+                "pin_pclk": self.p_clk,
+                "xclk_freq_hz": self.xclk_freq,
+                "ledc_timer": self.xclk_pwm_控制器,
+                "ledc_channel": self.xclk_pwm_通道,
+                "pixel_format": self.t图片格式,
+                "frame_size": self.t图片分辨率,
+                "jpeg_quality": self.t图片质量,
+                "fb_count": self.t缓冲区个数,
+                "fb_location": self.t内存位置,
+                "grab_mode": 0 if self.t最新帧 else 1,
+                "sccb_i2c_port": self.i2c_控制器,
+            }
+        )
 
         self.t寄存器 = t寄存器.CAMERA_REGISTRY.get(self.get_pid())
 
@@ -127,8 +140,7 @@ class Cam:
     def af_run(self):
         pid = self.get_pid()
         if pid != t参数.PID_VALUE.OV5640:
-            raise RuntimeError(
-                "摄像头不支持自动对焦, 摄像头PID=0x%04X" % pid)
+            raise RuntimeError("摄像头不支持自动对焦, 摄像头PID=0x%04X" % pid)
         cameralr.af_run()
 
     def get_reg(self, reg: int, mask: int):
@@ -151,19 +163,20 @@ class Cam:
     def set_垂直翻转(self, 翻转: bool):
         return cameralr.set_vflip(1 if 翻转 else 0)
 
-    def set_pll(self,
-                bypass: int,
-                mul: int,
-                sys: int,
-                root: int,
-                pre: int,
-                seld5: int,
-                pclken: int,
-                pclk: int
-                ) -> int:
-        return cameralr.set_pll(bypass, mul, sys, root, pre, seld5, pclken, pclk)
+    def set_pll(
+        self,
+        bypass: int,
+        mul: int,
+        sys: int,
+        pre: int,
+        root: int,
+        pclk_root: int,
+        pclk_manual: int,
+        pclk: int,
+    ) -> int:
+        return cameralr.set_pll(bypass, mul, sys, pre, root, pclk_root, pclk_manual, pclk)
 
-    def set_xclk(self,  xclk: int, timer: int = None):
+    def set_xclk(self, xclk: int, timer: int = None):  # type: ignore[assignment]
         self.xclk = xclk
         if timer is None:
             timer = self.xclk_pwm_控制器

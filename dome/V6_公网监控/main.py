@@ -1,4 +1,5 @@
 import cam_lsl
+import cam_lsl.t参数
 import wifi_lsl
 import ws_lsl
 import time
@@ -110,8 +111,9 @@ html_data = (
 
 # 初始化摄像头
 print("开始初始化摄像头....")
-cam = cam_lsl.Cam()
-cam.set_分辨率(cam_lsl.t参数.t图片分辨率.t_1280x720)
+cam = cam_lsl.Cam(xclk=10, t图片分辨率=cam_lsl.t参数.t图片分辨率.t_1280x720, xclk_freq=20_000_000,
+                  t图片格式=cam_lsl.t参数.t图片格式.jpeg,)
+# cam.set_分辨率(cam_lsl.t参数.t图片分辨率.t_1280x720)
 print(f"hts: {cam.get_hts()}  vts: {cam.get_vts()}")
 try:  # 开启自动对焦
     cam.af_run()
@@ -119,13 +121,12 @@ except Exception as e:
     print(e)
 # cam.set_水平镜像(True)
 # cam.set_垂直翻转(True)
+# cam.set_reg(0x3820, 0x02, 0x02)
 
 
 # 连接WiFi
 print("开始连接wifi,协商ipv6公网地址....")
-wifi_lsl.WIFI(account={
-    "CMCC-Ef6Z": "ddtzpts9"
-}, v6公网=True).conn_thr()
+wifi_lsl.WIFI(account={"CMCC-Ef6Z": "ddtzpts9"}, v6公网=True).conn_thr()
 
 
 # 等待ipv6公网连接成功
@@ -171,6 +172,7 @@ while True:
             cam.free_img_p()
             # time.sleep(0.1)
         except Exception as e:
+            continue
             # print(f"发送失败{e}")
             conn.socket.close()
             conn = None

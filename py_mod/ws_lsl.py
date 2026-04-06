@@ -6,11 +6,15 @@ import hashlib
 import time
 
 
-class WsScoket():
+class WsSocket:
     def __init__(self, socket: socket.socket):
         self.socket = socket
 
-    def send(self, data):
+    # 转接 socket 中的方法
+    def __getattr__(self, name):
+        return getattr(self.socket, name)
+
+    def send_ws(self, data):
         # 数据长度
         data_len = len(data)
 
@@ -30,23 +34,22 @@ class WsScoket():
             frame.append(data_len)
         elif data_len <= 0xFFFF:
             frame.append(126)
-            frame.extend(data_len.to_bytes(2, 'big'))
+            frame.extend(data_len.to_bytes(2, "big"))
 
         else:
             frame.append(127)
-            frame.extend(data_len.to_bytes(8, 'big'))
+            frame.extend(data_len.to_bytes(8, "big"))
 
         self.socket.sendall(frame)
         self.socket.sendall(data)
 
 
-class t套接字上限行为():
+class t套接字上限行为:
     重启 = 0
     等待 = 1
 
 
-class Server():
-
+class Server:
     def __init__(self, ip, port, listen):
         if ":" in ip:
             ipv = socket.AF_INET6
@@ -62,7 +65,7 @@ class Server():
         self.addr = None
         self.buf = bytearray()
 
-        # 浏览器似乎会一直重复发起连接
+        # 浏览器有时似乎会一直重复发起连接
         # 不过只有用户知道的连接会携带不一样的key
         self.key = []
 
@@ -74,8 +77,8 @@ class Server():
     # 在线程中，持续获取连接
     def _work(self, 套接字上限):
         while True:
-            if len(self.ws) + len(self.http) > 3:
-                time.sleep(0.3)
+            if len(self.ws) + len(self.http) >= 2:
+                time.sleep_ms(300)
                 continue
             try:
                 conn, addr = self.accept_all()
@@ -85,26 +88,25 @@ class Server():
                 if 套接字上限 == t套接字上限行为.重启:
                     machine.reset()
                 elif 套接字上限 == t套接字上限行为.等待:
-                    time.sleep(0.3)
+                    time.sleep_ms(300)
                     continue
                 else:
                     raise Exception("未定义的套装字上限行为")
 
-            if isinstance(conn, WsScoket):
+            if isinstance(conn, WsSocket):
                 self.ws.append((conn, addr))
             else:
                 self.http.append((conn, addr))
 
     # 启动自动获取连接线程
     # rst,没有套接字资源时是否重启
-    def run_thr(self, 套接字上限: t套接字上限行为 = t套接字上限行为.等待):
+    def run_thr(self, 套接字上限=t套接字上限行为.等待):
         _thread.start_new_thread(self._work, (套接字上限,))
         return self
 
     # 处理 ws和http_get 请求头
     def _accept(self):
         while True:
-
             # 获取连接
             self.conn, self.addr = self.s.accept()
 
@@ -115,10 +117,10 @@ class Server():
             try:
                 # 意外读不够，直接关了算了，暂不处理
                 self.buf = self.conn.recv(1024)
-                if len(self.buf) >= 4 and self.buf[-4:] == b'\r\n\r\n':
+                if len(self.buf) >= 4 and self.buf[-4:] == b"\r\n\r\n":
                     self.conn.settimeout(None)
                 return
-            except (OSError, Exception) as e:
+            except:  # noqa: E722
                 pass
 
             # 不处理的连接关闭
@@ -137,16 +139,17 @@ class Server():
                     if index == -1:
                         raise Exception("ws 没有 key")
 
-                    key = self.buf[index+19:index+19+24] + \
-                        b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                    key = (
+                        self.buf[index + 19 : index + 19 + 24]
+                        + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                    )
                     if len(self.key) > 1000:
                         self.key = []
                     if key in self.key:
                         raise Exception(f"浏览器连接，不处理{time.time()}")
                     self.key.append(key)
                     sha1 = hashlib.sha1(key)
-                    base64 = binascii.b2a_base64(
-                        sha1.digest()).decode().strip()
+                    base64 = binascii.b2a_base64(sha1.digest()).decode().strip()
 
                     response = (
                         "HTTP/1.1 101 Switching Protocols\r\n"
@@ -154,13 +157,13 @@ class Server():
                         "Connection: Upgrade\r\n"
                         f"Sec-WebSocket-Accept: {base64}\r\n\r\n"
                     )
-                    self.conn.sendall(response.encode('utf-8'))
+                    self.conn.sendall(response.encode("utf-8"))
 
-                    return WsScoket(self.conn), self.addr
+                    return WsSocket(self.conn), self.addr  # type: ignore
 
                 # 没有确认是否是http
                 return self.conn, self.addr
-            except Exception as e:
+            except:  # noqa: E722
                 # print(e)
                 self.conn.close()
 
@@ -168,7 +171,7 @@ class Server():
     def accept_ws(self):
         while True:
             conn, addr = self.accept_all()
-            if isinstance(conn, WsScoket):
+            if isinstance(conn, WsSocket):
                 return conn, addr
             conn.close()
 
@@ -176,6 +179,6 @@ class Server():
     def accept_http(self):
         while True:
             conn, addr = self.accept_all()
-            if not isinstance(conn, WsScoket):
+            if not isinstance(conn, WsSocket):
                 return conn, addr
-            conn.close()
+            conn.close()  # type: ignore
