@@ -17,7 +17,7 @@ class _udp_log:
 
         self.udp_print = False
         self.ip = None
-        self.port = 9001
+        self.port = 50002
         self.print = False
         self._cnt = 0
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

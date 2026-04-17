@@ -5,6 +5,8 @@ add_library(usermod_esp32camera INTERFACE)
 target_sources(usermod_esp32camera INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/camera_lr.c
     ${CMAKE_CURRENT_LIST_DIR}/wifi_lr.c
+    ${CMAKE_CURRENT_LIST_DIR}/rmt_lr.c
+    ${CMAKE_CURRENT_LIST_DIR}/free_lr.c
 )
 
 target_include_directories(usermod_esp32camera INTERFACE

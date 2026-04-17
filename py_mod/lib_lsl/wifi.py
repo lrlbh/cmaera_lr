@@ -11,7 +11,7 @@ except:  # noqa: E722
 
 
 # 有多次初始化需求
-# 多次初始化，返回第一次的对象，只修改v6公网参数
+# 多次初始化，返回第一次的对象，只会修改v6公网参数
 class WIFI:
     _单例对象 = None
     _is_init = False
@@ -100,7 +100,6 @@ class WIFI:
         return ret_acc
 
     # 获取v6字符串
-
     @staticmethod
     def get_v6_str():
         return wifilr.get_ipv6_addr()
@@ -232,7 +231,7 @@ class WIFI:
             # 连接wifi
             for sid in acc:
                 self.wlan.disconnect()
-                self.wlan.connect(sid, acc[sid]) # type: ignore
+                self.wlan.connect(sid, acc[sid])  # type: ignore
                 t0 = time.ticks_ms()
                 while time.ticks_diff(time.ticks_ms(), t0) < self.单个wifi尝试时间ms:
                     if self.wlan.isconnected():
