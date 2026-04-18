@@ -1,3 +1,8 @@
+/*
+    万万没想到IDF中关于RMT的发送不是连续的
+    这里只能在重新实现一次RMT的c_mod了
+*/
+
 #include "driver/rmt_tx.h"
 #include "py/runtime.h"
 #include "py/obj.h"
@@ -7,37 +12,7 @@ typedef struct _rmt_obj_t
     rmt_channel_handle_t tx_chan;
     rmt_encoder_handle_t copy_encoder;
     rmt_transmit_config_t tx_config;
-    int free;
 } rmt_obj_t;
-
-// 获取int值
-static mp_obj_t rmt_get_free(mp_obj_t rmt_in)
-{
-    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
-    return mp_obj_new_int(rmt->free);
-}
-
-// 设置int值
-static mp_obj_t rmt_sub_free(mp_obj_t rmt_in, mp_obj_t val_in)
-{
-    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
-    rmt->free -= mp_obj_get_int(val_in);
-    return mp_const_none;
-}
-
-// 发送完成的回调函数
-static bool rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
-{
-    // if (edata->num_symbols ==)
-
-    rmt_obj_t *this = (rmt_obj_t *)user_ctx;
-
-    // 搞不懂edata为什么没有携带发送完的地址，或者我没找到？
-    // 这里只能计数，然后在外部确保释放正确的数据了
-    this->free++;
-
-    return false;
-}
 
 // 创建通道
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
@@ -86,28 +61,20 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
             &mp_type_Exception, MP_ERROR_TEXT("creaet_copy_encoder_error: %d"), err);
     }
 
-    // 分配内存，避免数据拷贝
-    mp_obj_t list_out = mp_obj_new_list(0, NULL);
-    for (int i = 0; i < data_num_t; i++)
+    // 申请内存
+    size_t buffer_size = sizeof(rmt_symbol_word_t) * data_len_t;
+    void *mem_lr = heap_caps_malloc(buffer_size, MALLOC_CAP_DMA);
+    if (!mem_lr)
     {
-        // 申请内存
-        size_t buffer_size = sizeof(rmt_symbol_word_t) * data_len_t;
-        void *mem_lr = heap_caps_malloc(buffer_size, MALLOC_CAP_DMA);
-        if (!mem_lr)
-        {
-            mp_raise_msg_varg(
-                &mp_type_Exception,
-                MP_ERROR_TEXT("malloc_mem_%d_error: %d"), i + 1, err);
-        }
-        // 内存地址放入bytearray
-        mp_obj_t ba = mp_obj_new_bytearray_by_ref(buffer_size, mem_lr);
-        // bytearray 放入list
-        mp_obj_list_append(list_out, ba);
+        mp_raise_msg_varg(
+            &mp_type_Exception,
+            MP_ERROR_TEXT("malloc_mem_error: %d"), err);
     }
+    mp_obj_t ret_bytearray = mp_obj_new_bytearray_by_ref(buffer_size, mem_lr);
 
     // 数据放入堆中返回
     rmt_obj_t *rmt = malloc(sizeof(rmt_obj_t));
-    // 千万别让mpy管理内存，它似乎会移动内存地址
+    // 千万别让mpy管理内存，它似乎会移动整理内存
     // rmt_obj_t *rmt = m_new_obj(rmt_obj_t);
     if (!rmt)
     {
@@ -115,33 +82,19 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     }
     rmt->tx_chan = tx_chan;
     rmt->copy_encoder = copy_encoder;
+
+    // 发送配置
     rmt->tx_config = (rmt_transmit_config_t){
         .loop_count = 0,
-        .flags.eot_level = 0,
+        .flags.eot_level = 0,         // 结束保持低电平
+        .flags.queue_nonblocking = 1, // 队列满时返回错误
     };
-    rmt->free = 0;
 
-    // 发送完成的回调函数
-    rmt_tx_event_callbacks_t cbs = {
-        .on_trans_done = rmt_on_transmit_done,
-    };
-    err = rmt_tx_register_event_callbacks(tx_chan, &cbs, rmt);
-    if (err != ESP_OK)
-    {
-        mp_raise_msg_varg(
-            &mp_type_Exception,
-            MP_ERROR_TEXT("add_cbs_error: %d"), err);
-    }
-
-    // 返回数据
-    mp_obj_t tuple[2] = {
-        mp_obj_new_int_from_uint((mp_uint_t)rmt),
-        list_out};
-    return mp_obj_new_tuple(2, tuple);
+    return mp_obj_new_int_from_uint((mp_uint_t)rmt);
 }
 
 // 发送数据
-static mp_obj_t rmt_send(
+static mp_obj_t rmt_loop(
     mp_obj_t rmt_in, mp_obj_t data_p_in, mp_obj_t data_len_in)
 {
     rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
@@ -228,36 +181,3 @@ static mp_obj_t rmt_delete_channel(mp_obj_t rmt_in)
 
     return mp_const_none;
 }
-
-// 定义函数引用
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(new_rmt_obj, 5, 5, new_rmt);
-static MP_DEFINE_CONST_FUN_OBJ_3(rmt_send_obj, rmt_send);
-static MP_DEFINE_CONST_FUN_OBJ_0(rmt_get_symbol_size_obj, rmt_get_symbol_size);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_stop_channel_obj, rmt_stop_channel);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_encoder_obj, rmt_delete_encoder);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_channel_obj, rmt_delete_channel);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_get_free_obj, rmt_get_free);
-static MP_DEFINE_CONST_FUN_OBJ_2(rmt_sub_free_obj, rmt_sub_free);
-
-// 映射 Python 函数名到 C 函数
-static const mp_rom_map_elem_t rmt_lr_module_globals_table[] = {
-    {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_rmt_lr)},
-    {MP_ROM_QSTR(MP_QSTR_new), MP_ROM_PTR(&new_rmt_obj)},
-    {MP_ROM_QSTR(MP_QSTR_send), MP_ROM_PTR(&rmt_send_obj)},
-    {MP_ROM_QSTR(MP_QSTR_get_free), MP_ROM_PTR(&rmt_get_free_obj)}, // 新增
-    {MP_ROM_QSTR(MP_QSTR_sub_free), MP_ROM_PTR(&rmt_sub_free_obj)}, // 新增
-    {MP_ROM_QSTR(MP_QSTR_get_symbol_size), MP_ROM_PTR(&rmt_get_symbol_size_obj)},
-    {MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&rmt_stop_channel_obj)},
-    {MP_ROM_QSTR(MP_QSTR_del_encoder), MP_ROM_PTR(&rmt_delete_encoder_obj)},
-    {MP_ROM_QSTR(MP_QSTR_del_channel), MP_ROM_PTR(&rmt_delete_channel_obj)},
-};
-static MP_DEFINE_CONST_DICT(rmt_lr_module_globals, rmt_lr_module_globals_table);
-
-// 定义模块
-const mp_obj_module_t rmt_lr_user_cmodule = {
-    .base = {&mp_type_module},
-    .globals = (mp_obj_dict_t *)&rmt_lr_module_globals,
-};
-
-// 注册模块 (模块名: rmt_lr)
-MP_REGISTER_MODULE(MP_QSTR_rmt_lr, rmt_lr_user_cmodule);
