@@ -1,3 +1,20 @@
+
+# import struct
+
+# import time
+# import lib_lsl
+# import rmt_lr
+# import socket
+
+
+# rmt, mem = rmt_lr.new_rmt(21, 20480, 1024, True, 0, False)
+# rmt_lr.rmt_loop(rmt, mem, 10240)
+# while True:
+#     lib_lsl.send(rmt_lr.rmt_get_free(rmt))
+#     # lib_lsl.send(rmt_lr.rmt_get_tt(rmt))
+#     time.sleep(1)
+
+
 import time
 
 import socket
