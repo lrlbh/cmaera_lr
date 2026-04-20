@@ -48,8 +48,8 @@ class RMT:
         self.资源释放 = False
         self.rmt, self.mem = rmt_lr.new(
             gpio,
-            缓冲区数量,
             缓冲区长度,
+            缓冲区数量,
             gpio缓存块数量,
             dma,
         )
@@ -109,7 +109,14 @@ class RMT:
             await asyncio.sleep_ms(sleep_ms)
 
     # 长度需要用字节数,不能用数据个数
-    def return_mem(self, data: bytearray, data_len: int = None):
+    def return_mem(self, data: bytearray, data_len: int = None, 忽略零长度=True):
+
+        # 拦截已知错误，发送数据长度为0，默认寂寞处理该错误
+        if data_len == 0 and 忽略零长度:
+            # 不发送，直接放回空闲列表
+            self.null_mem.append(data)
+            return
+
         if data_len is None:
             data_len = len(data)
         self.send_mem.append(data)
