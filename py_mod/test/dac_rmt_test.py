@@ -1,20 +1,3 @@
-
-# import struct
-
-# import time
-# import lib_lsl
-# import rmt_lr
-# import socket
-
-
-# rmt, mem = rmt_lr.new_rmt(21, 20480, 1024, True, 0, False)
-# rmt_lr.rmt_loop(rmt, mem, 10240)
-# while True:
-#     lib_lsl.send(rmt_lr.rmt_get_free(rmt))
-#     # lib_lsl.send(rmt_lr.rmt_get_tt(rmt))
-#     time.sleep(1)
-
-
 import time
 
 import socket
@@ -23,6 +6,7 @@ from dac_lsl import RMT
 import lib_lsl
 
 from lib_lsl import WIFI
+import rmt_lr
 
 WIFI().conn_one()
 
@@ -65,9 +49,15 @@ WIFI().conn_one()
 # rmt_sync_client()
 
 
+
 def rmt_sync_client():
     # 初始化 RMT
-    driver = RMT(gpio=48, 缓冲区长度=4096, 缓冲区数量=3)
+    rmt = rmt_lr.new_rmt(21, 2, 2046, 1, 0, 0, 2, 255, 7, 64, 64)
+
+    buf1 = bytearray(1024 * 100)
+    # buf1[:] = bytes([0x80]) * len(buf1)
+    buf2 = bytearray(1024 * 100)
+    # buf2[:] = bytes([0x80]) * len(buf2)
 
     server_ip = "192.168.1.5"
     server_port = 30000
@@ -78,25 +68,20 @@ def rmt_sync_client():
     s.connect((server_ip, server_port))
     lib_lsl.send("连接成功！")
 
-    mem_buf_1 = driver.get_mem()
-    mem_buf_2 = driver.get_mem()
-    mem_buf_3 = driver.get_mem()
-
-    if s.readinto(mem_buf_1) != 4096 * driver.symbol_size:
-        lib_lsl.send("错误长度")
-    if s.readinto(mem_buf_2) != 4096 * driver.symbol_size:
-        lib_lsl.send("错误长度")
-    if s.readinto(mem_buf_3) != 4096 * driver.symbol_size: 
-        lib_lsl.send("错误长度")
-
-    driver.return_mem(mem_buf_1)
-    driver.return_mem(mem_buf_2)
-    driver.return_mem(mem_buf_3)
-
+    i = 0
     while True:
-        mem_buf = driver.get_mem(1)
-        driver.return_mem(mem_buf)
+        if i % 2:
+            s.readinto(buf1, len(buf1))
+            rmt_lr.rmt_send(rmt, buf1, len(buf1))
+        else:
+            s.readinto(buf2, len(buf2))
+            rmt_lr.rmt_send(rmt, buf2, len(buf2))
+
+        while True:
+            if rmt_lr.rmt_get_free(rmt) >= 0:
+                rmt_lr.rmt_sub_free(rmt, 1)
+                break
+            time.sleep_us(100)
 
 
-rmt_sync_client()
-
+# rmt_sync_client()

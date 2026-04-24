@@ -3,96 +3,146 @@
 #include "py/obj.h"
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
+
+// 待处理
+// dma 大小，是否会影响别的外设
+// 不从中心值渐变，从第一个和最后一个字节渐变
+// 晕了，渐变效果和需要几个音频数据无关，和需要多少多少时间有关
+// 渐变插入是否可以不在回调函数中，在编码器创建或者销毁时
 typedef struct _rmt_obj_t
 {
-    rmt_channel_handle_t tx_chan;
-    rmt_encoder_handle_t encoder;
-    rmt_transmit_config_t tx_config;
-    int gpio;
-    int free;
+    rmt_channel_handle_t tx_chan;    // 通道对象
+    rmt_encoder_handle_t encoder;    // 编码器对象
+    rmt_transmit_config_t tx_config; // 发送配置
+    int free;                        // 发送计数
+    uint32_t max;                    // dac分辨率
+    uint32_t symbol_loop;            // 每字节持续多少符号
+    uint32_t zero;                   // 大概中心值
+    uint32_t symbol_max;             // 渐变头 + 数据的符号数量
+    int start_symbol;                // 渐变头 符号数量
+    int end_symbol;                  // 渐变 符号数量
+    int srart_ttt;                   // 头 渐变递增
+    int end_ttt;                     // 尾 渐变递增
 } rmt_obj_t;
 
-// 获取int值
-static mp_obj_t rmt_get_free(mp_obj_t rmt_in)
+// 原始数据
+// (rmt_symbol_word_t){
+//             .duration0 = 2,
+//             .level0 = 1,
+//             .duration1 = 2,
+//             .level1 = 0,
+//         };
+// 注意,在copy编码器中
+// data_out,必须被赋值，否则会进入胡乱的逻辑，包括当不限于乱传入 data_in 的地址
+// 0tisk最好的结果就是让回调不受控的结束
+// 1tick == 32767tick
+// 所以最小2tick
+// 不过 2tick 还是等于 2tick 也就是25ns, 3tick 还是等于 3tick 也就是37.5ns
+// 写入的rmt_symbol_word_t 是某些数据似乎会导致编码器提前结束
+static size_t IRAM_ATTR encode_8bit(
+    const void *data_in,         // 发送时传入的地址
+    size_t data_size,            // data长度，发送时传入的长度
+    size_t this_len,             // 当前发送到第几个符号了
+    size_t data_out_len,         // 本次可编码符号数量
+    rmt_symbol_word_t *data_out, // 本次写入地址
+    bool *done,                  // 传输完成标记
+    void *arg_in)                // 自定义数据
 {
-    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
-    return mp_obj_new_int(rmt->free);
+
+    // 自定义参数
+    rmt_obj_t *arg = (rmt_obj_t *)arg_in;
+
+    // 头渐变
+    if (this_len == 0)
+    {
+        // 数据不够不编码
+        *done = false;
+        if (data_out_len < arg->start_symbol)
+        {
+            return 0;
+        }
+        // 需要编码器的的长度
+        arg->symbol_max = data_size * arg->symbol_loop + arg->start_symbol;
+        for (int i = 0; i < arg->start_symbol; i++)
+        {
+            data_out[i].level0 = 1;
+            data_out[i].level1 = 0;
+            data_out[i].duration0 = i * arg->srart_ttt / 1000 + 2;
+            data_out[i].duration1 = arg->max - data_out[i].duration0;
+        }
+        return arg->start_symbol;
+    }
+
+    // 尾渐变
+    if (this_len == arg->symbol_max)
+    {
+        *done = false;
+        if (data_out_len < arg->end_symbol)
+        {
+
+            return 0;
+        }
+
+        // esp_rom_printf(" %d  %d  \n", arg->end_symbol, data_out_len);
+        for (int i = 0; i < arg->end_symbol; i++)
+        {
+            data_out[i].level0 = 1;
+            data_out[i].level1 = 0;
+            data_out[i].duration0 = arg->zero - (i * arg->end_ttt / 1000) + 2;
+            data_out[i].duration1 = arg->max - data_out[i].duration0;
+        }
+
+        // *done = true;
+        return arg->end_symbol;
+    }
+
+    // 尾部BUG
+    if (this_len > arg->symbol_max)
+    {
+        *done = true;
+        return 0;
+    }
+
+    // 本次可以编码多少符号
+    uint32_t send_len = data_out_len - data_out_len % arg->symbol_loop; // 可以编码数据
+    if (send_len + this_len > arg->symbol_max)                          // 不要超过，剩余数据
+    {
+        send_len = arg->symbol_max - this_len;
+    }
+    uint32_t char_len = send_len / arg->symbol_loop;
+
+    // 数据当前处理到什么位置
+    size_t data_i = this_len / arg->symbol_loop - (arg->start_symbol / arg->symbol_loop);
+
+    // 需要编码的数据
+    char *data = (char *)data_in;
+
+    // esp_rom_printf("char_len %d  ", char_len)
+
+    // 编码数据
+    rmt_symbol_word_t temp_data;
+    temp_data.level0 = 1;
+    temp_data.level1 = 0;
+    for (int i = 0; i < char_len; i++)
+    {
+        temp_data.duration1 = arg->max - data[data_i + i];
+        temp_data.duration0 = arg->max - temp_data.duration1;
+        for (int j = 0; j < arg->symbol_loop; j++)
+        {
+            (data_out++)->val = temp_data.val;
+        }
+    }
+
+    *done = false;
+    return send_len;
 }
-
-// 设置int值
-static mp_obj_t rmt_sub_free(mp_obj_t rmt_in, mp_obj_t val_in)
-{
-    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
-    rmt->free -= mp_obj_get_int(val_in);
-    return mp_const_none;
-}
-
-// static size_t IRAM_ATTR test_enc(
-//     const void *data_in,         // 内外部共享内存地址
-//     size_t data_size,            // 内外部共享内存长度,单位字节
-//     size_t this_len,             // 当前发送到哪里了
-//     size_t data_out_len,         // 本次可以写入最大长度
-//     rmt_symbol_word_t *data_out, // 本次写入地址
-//     bool *done,                  // 传输完成标记,千万千万不能设置为true
-//                                  // 否则即使发送参数是死循环,也不会进入回调了
-//     void *arg_in)                // 自定义数据
-// {
-
-//     // if (this_len < 192)
-//     // {
-//     //     data_out_len = 192;
-//     // }
-
-//     rmt_obj_t *arg = (rmt_obj_t *)arg_in;
-
-//     rmt_symbol_word_t *data = (rmt_symbol_word_t *)data_in;
-
-//     memcpy(data_out, data + this_len, data_out_len * 4);
-
-//     if (this_len * 4 >= data_size)
-//     {
-//         *done = true;
-//     }
-//     else
-//     {
-//         *done = false;
-//     }
-
-//     // if (this_len == 0)
-//     // {
-//     //     // 设置引脚为PP
-//     //     GPIO.pin[arg->gpio].pad_driver = 0;
-//     // }
-
-//     // 发送参数里面死循环是假的，不会生效，所以返回true,回调将再也不会被执行
-//     // 如果在编码器完数据后还试图返回false，那么IDF将奔溃重启
-//     // 所以在编码器中也无法实现RMT连续模式
-//     return data_out_len;
-// }
 
 // 发送完成的回调函数
 static bool IRAM_ATTR rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
 {
-    // if (edata->num_symbols ==)
-
-    // 获取自定义数据
+    // 计数，用于用户逻辑中回收内存
     rmt_obj_t *this = (rmt_obj_t *)user_ctx;
-
-    // 设置引脚为OD
-    // GPIO.pin[this->gpio].pad_driver = 1;
-    // 设置高阻
-    // gpio_config_t io_conf = {
-    //     .pin_bit_mask = (1ULL << this->gpio),
-    //     .mode = GPIO_MODE_INPUT,               // 禁用输出驱动
-    //     .pull_up_en = GPIO_PULLUP_DISABLE,     // 禁用上拉
-    //     .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用下拉
-    //     .intr_type = GPIO_INTR_DISABLE};
-    // gpio_config(&io_conf);
-
-    // 搞不懂edata为什么没有携带发送完的地址，或者我没找到？
-    // 这里只能计数，然后在外部确保释放正确的数据了
     ++this->free;
-
     return false;
 }
 
@@ -100,18 +150,37 @@ static bool IRAM_ATTR rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const r
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 {
 
-    int gpio_t = mp_obj_get_int(args[0]);
-    int data_len_t = mp_obj_get_int(args[1]);
-    int data_num_t = mp_obj_get_int(args[2]);
-    int mem_block_symbols_t = mp_obj_get_int(args[3]);
-    int dma = mp_obj_get_int(args[4]);
+    // 获取python传入变量
+    int gpio = mp_obj_get_int(args[0]); // rmt引脚
+    // int data_len_t = mp_obj_get_int(args[1]);
+    int queue_len = mp_obj_get_int(args[1]);         // 发送队列长度
+    int mem_block_symbols = mp_obj_get_int(args[2]); // GPIO缓存
+    int dma = mp_obj_get_int(args[3]);               // 是否dma
+    int intr_priority = mp_obj_get_int(args[4]);     // 中断优先级
+    int is_od = mp_obj_get_int(args[5]);             // false 时推挽
+    int encode_id = mp_obj_get_int(args[6]);         // 选择编码器
+    int dac_max = mp_obj_get_int(args[7]);           // dac分辨率
+    int symbol_loop = mp_obj_get_int(args[8]);       // 每字节等于多少符号
+    int hed_symbol = mp_obj_get_int(args[9]);        // 头填充多少个dac数据
+    int end_symbol = mp_obj_get_int(args[10]);       // 尾填充多少个dac数据
 
     // 返回对象
-    // 千万别让mpy管理内存，它似乎会移动整理内存地址
-    // rmt_obj_t *rmt = m_new_obj(rmt_obj_t);
     rmt_obj_t *rmt = malloc(sizeof(rmt_obj_t));
     rmt->free = 0;
-    rmt->gpio = gpio_t;
+    rmt->symbol_loop = symbol_loop;
+    rmt->max = dac_max;
+    rmt->zero = dac_max / 2;
+    rmt->start_symbol = rmt->symbol_loop * hed_symbol;
+    rmt->end_symbol = rmt->symbol_loop * end_symbol;
+    rmt->srart_ttt = rmt->zero * 1000 / rmt->start_symbol;
+    rmt->end_ttt = rmt->zero * 1000 / rmt->end_symbol;
+
+    int ttt = rmt->srart_ttt;
+    if (ttt < rmt->end_symbol)
+    {
+        ttt = rmt->end_symbol;
+    }
+
     if (!rmt)
     {
         mp_raise_msg(&mp_type_Exception, MP_ERROR_TEXT("malloc_ret_p_error"));
@@ -119,12 +188,16 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 
     // 通道配置
     rmt_tx_channel_config_t tx_chan_config = {
-        .clk_src = RMT_CLK_SRC_DEFAULT,           // 选择时钟源：80MHz APB
-        .gpio_num = gpio_t,                       // 选择输出引脚
-        .mem_block_symbols = mem_block_symbols_t, // 通道中保存多少个 rmt_symbol_word_t
-        .resolution_hz = 80000000,                // 时钟源频率   1 tick = 12.5ns
-        .trans_queue_depth = data_num_t,          // 传输队列深度，允许同时排队多组波形
-        .flags.with_dma = dma,                    // 开启 DMA 模式
+        .clk_src = RMT_CLK_SRC_DEFAULT,         // 选择时钟源：80MHz APB
+        .gpio_num = gpio,                       // 选择输出引脚
+        .mem_block_symbols = mem_block_symbols, // 通道中保存多少个 rmt_symbol_word_t
+                                                // dma下最大2046
+                                                // 最后一次编码的 “字节” 不能小于此数，否则多出的会被截断
+        .resolution_hz = 80000000,              // 时钟源频率   1 tick = 12.5ns
+        .trans_queue_depth = queue_len,         // 传输队列深度，允许同时排队多组波形
+        .flags.with_dma = dma,                  // 开启 DMA 模式
+        .intr_priority = intr_priority,         // 中断优先级，传0驱动自动分配为低优先级
+        .flags.io_od_mode = is_od               // 0推挽，1开漏
     };
 
     // 创建通道
@@ -144,58 +217,31 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     }
 
     // 创建编码器
-    // rmt_simple_encoder_config_t simple_encoder_config = {
-    //     .callback = test_enc, // 编码器回调
-    //     .arg = rmt,           // 传入数据
-    //     .min_chunk_size = 32, /*    不知道这傻逼参数要干什么
-    //                                 看样子是说有最少多少空位才触发回调
-    //                                 然而，非dma情况下每个通道只有48个空间，它默认64？？？
-    //                                 如果没有通道合并，默认就是BUG，回调不会被触????
-    //                                 翻译了1个小时也不知道想表达什么
-    //                                 傻逼东西    */
-    // };
-    // err = rmt_new_simple_encoder(&simple_encoder_config, &rmt->encoder);
-    rmt_copy_encoder_config_t copy_encoder_config = {};
-    err = rmt_new_copy_encoder(&copy_encoder_config, &rmt->encoder);
+    if (encode_id == 1)
+    {
+        rmt_copy_encoder_config_t copy_encoder_config = {};
+        err = rmt_new_copy_encoder(&copy_encoder_config, &rmt->encoder);
+    }
+    else if (encode_id == 2) // 需要在else中执行,避免未定义编码器情况
+    {
+
+        rmt_simple_encoder_config_t simple_encoder_config = {
+            .callback = encode_8bit, // 编码器回调
+            .arg = rmt,              // 传入数据
+            .min_chunk_size = ttt,   // 多少数据不编码，回调死亡
+        };
+        err = rmt_new_simple_encoder(&simple_encoder_config, &rmt->encoder);
+    }
     if (err != ESP_OK)
     {
         mp_raise_msg_varg(
             &mp_type_Exception, MP_ERROR_TEXT("creaet_copy_encoder_error: %d"), err);
     }
 
-    // 分配内存，避免数据拷贝
-    mp_obj_t list_out = mp_obj_new_list(0, NULL);
-    for (int i = 0; i < data_num_t; i++)
-    {
-        // 申请内存
-        size_t buffer_size = sizeof(rmt_symbol_word_t) * data_len_t;
-        // void *mem_lr = heap_caps_malloc(buffer_size, MALLOC_CAP_DMA );
-        void *mem_lr = heap_caps_malloc(buffer_size, MALLOC_CAP_SPIRAM);
-        if (!mem_lr)
-        {
-            mp_raise_msg_varg(
-                &mp_type_Exception,
-                MP_ERROR_TEXT("malloc_mem_%d_error: %d"), i + 1, err);
-        }
-        // 内存地址放入bytearray
-        mp_obj_t ba = mp_obj_new_bytearray_by_ref(buffer_size, mem_lr);
-        // bytearray 放入list
-        mp_obj_list_append(list_out, ba);
-    }
-
     // 发送配置
     rmt->tx_config = (rmt_transmit_config_t){
-        .loop_count = 0, // 循环配置，不过是假的
-                         // dma下不会生效,非dma下也行为怪异
-                         // 又似乎是受到编码器影响
-                         // 所以必须为0
-
-        .flags.eot_level = 0, // 发送完成后，引脚配置为低电平
-                              // 如果发送前设置引脚模式的话
-                              // 可以设置为高，切换od和pp糊弄一下间隔
-                              // 以及在IDF源码中尝试了，失败
-                              // 保持电平不是代码设置的，切入时机要么早了，要么晚了
-
+        .loop_count = 0,              // 不循环，发送0次,迷之参数
+        .flags.eot_level = 0,         // 发送完成后，引脚配置为低电平
         .flags.queue_nonblocking = 1, // 队列满时返回错误
     };
 
@@ -212,10 +258,7 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     }
 
     // 返回数据
-    mp_obj_t tuple[2] = {
-        mp_obj_new_int_from_uint((mp_uint_t)rmt),
-        list_out};
-    return mp_obj_new_tuple(2, tuple);
+    return mp_obj_new_int_from_uint((mp_uint_t)rmt);
 }
 
 // 发送数据
@@ -307,35 +350,84 @@ static mp_obj_t rmt_delete_channel(mp_obj_t rmt_in)
     return mp_const_none;
 }
 
-// 定义函数引用
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(new_rmt_obj, 5, 5, new_rmt);
-static MP_DEFINE_CONST_FUN_OBJ_3(rmt_send_obj, rmt_send);
-static MP_DEFINE_CONST_FUN_OBJ_0(rmt_get_symbol_size_obj, rmt_get_symbol_size);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_stop_channel_obj, rmt_stop_channel);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_encoder_obj, rmt_delete_encoder);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_channel_obj, rmt_delete_channel);
-static MP_DEFINE_CONST_FUN_OBJ_1(rmt_get_free_obj, rmt_get_free);
-static MP_DEFINE_CONST_FUN_OBJ_2(rmt_sub_free_obj, rmt_sub_free);
+// 获取int值
+static mp_obj_t rmt_get_free(mp_obj_t rmt_in)
+{
+    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
+    return mp_obj_new_int(rmt->free);
+}
 
-// 映射 Python 函数名到 C 函数
+// 设置int值
+static mp_obj_t rmt_sub_free(mp_obj_t rmt_in, mp_obj_t val_in)
+{
+    rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
+    rmt->free -= mp_obj_get_int(val_in);
+    return mp_const_none;
+}
+
+// 在下方提供注册到mpy的代码， 模块名: rmt_lr
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+// 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
+
+// --- 宏定义与函数绑定 ---
+
+// 1. 固定参数函数绑定
+// rmt_send(rmt_in, data_p_in, data_len_in) -> 3个参数
+MP_DEFINE_CONST_FUN_OBJ_3(rmt_send_obj, rmt_send);
+
+// rmt_get_symbol_size() -> 0个参数
+MP_DEFINE_CONST_FUN_OBJ_0(rmt_get_symbol_size_obj, rmt_get_symbol_size);
+
+// rmt_stop_channel(rmt_in) -> 1个参数
+MP_DEFINE_CONST_FUN_OBJ_1(rmt_stop_channel_obj, rmt_stop_channel);
+
+// rmt_delete_encoder(rmt_in) -> 1个参数
+MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_encoder_obj, rmt_delete_encoder);
+
+// rmt_delete_channel(rmt_in) -> 1个参数
+MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_channel_obj, rmt_delete_channel);
+
+// rmt_get_free(rmt_in) -> 1个参数
+MP_DEFINE_CONST_FUN_OBJ_1(rmt_get_free_obj, rmt_get_free);
+
+// rmt_sub_free(rmt_in, val_in) -> 2个参数
+MP_DEFINE_CONST_FUN_OBJ_2(rmt_sub_free_obj, rmt_sub_free);
+
+// 2. 变长参数函数绑定
+// new_rmt(n_args, args) -> 11个参数，使用 VAR_BETWEEN
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(new_rmt_obj, 11, 11, new_rmt);
+
+// --- 模块入口表 ---
+
 static const mp_rom_map_elem_t rmt_lr_module_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_rmt_lr)},
-    {MP_ROM_QSTR(MP_QSTR_new), MP_ROM_PTR(&new_rmt_obj)},
-    {MP_ROM_QSTR(MP_QSTR_send), MP_ROM_PTR(&rmt_send_obj)},
-    {MP_ROM_QSTR(MP_QSTR_get_free), MP_ROM_PTR(&rmt_get_free_obj)}, // 新增
-    {MP_ROM_QSTR(MP_QSTR_sub_free), MP_ROM_PTR(&rmt_sub_free_obj)}, // 新增
-    {MP_ROM_QSTR(MP_QSTR_get_symbol_size), MP_ROM_PTR(&rmt_get_symbol_size_obj)},
-    {MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&rmt_stop_channel_obj)},
-    {MP_ROM_QSTR(MP_QSTR_del_encoder), MP_ROM_PTR(&rmt_delete_encoder_obj)},
-    {MP_ROM_QSTR(MP_QSTR_del_channel), MP_ROM_PTR(&rmt_delete_channel_obj)},
+
+    // 必须 C 函数名 == PY 函数名
+    {MP_ROM_QSTR(MP_QSTR_new_rmt), MP_ROM_PTR(&new_rmt_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_send), MP_ROM_PTR(&rmt_send_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_get_symbol_size), MP_ROM_PTR(&rmt_get_symbol_size_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_stop_channel), MP_ROM_PTR(&rmt_stop_channel_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_delete_encoder), MP_ROM_PTR(&rmt_delete_encoder_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_delete_channel), MP_ROM_PTR(&rmt_delete_channel_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_get_free), MP_ROM_PTR(&rmt_get_free_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_sub_free), MP_ROM_PTR(&rmt_sub_free_obj)},
 };
+
+// 注册 globals table
 static MP_DEFINE_CONST_DICT(rmt_lr_module_globals, rmt_lr_module_globals_table);
 
-// 定义模块
-const mp_obj_module_t rmt_lr_user_cmodule = {
+// --- 定义模块对象 ---
+
+const mp_obj_module_t rmt_lr_user_module = {
     .base = {&mp_type_module},
     .globals = (mp_obj_dict_t *)&rmt_lr_module_globals,
 };
 
-// 注册模块 (模块名: rmt_lr)
-MP_REGISTER_MODULE(MP_QSTR_rmt_lr, rmt_lr_user_cmodule);
+// 注册模块到 MicroPython 核心 (需要配置 micropython.mk 或 mpconfigport.h)
+MP_REGISTER_MODULE(MP_QSTR_rmt_lr, rmt_lr_user_module);
