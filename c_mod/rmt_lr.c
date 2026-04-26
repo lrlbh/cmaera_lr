@@ -5,24 +5,31 @@
 #include "driver/gpio.h"
 
 // 待处理
-// dma 大小，是否会影响别的外设
-// 不从中心值渐变，从第一个和最后一个字节渐变
-// 晕了，渐变效果和需要几个音频数据无关，和需要多少多少时间有关
-// 渐变插入是否可以不在回调函数中，在编码器创建或者销毁时
+// 拆分new,或者优化赋值，让PY可以处理new时部分成功，申请了部分数据的情况
+// 提高渐变精度，具体方法见代码注释
+
+static size_t encode_8bit_start(const void *src, size_t src_size, size_t src_offset, size_t symbols_to_encode, rmt_symbol_word_t *hw_symbols, bool *done, void *arg);
+static size_t encode_8bit_work(const void *src, size_t src_size, size_t src_offset, size_t symbols_to_encode, rmt_symbol_word_t *hw_symbols, bool *done, void *arg);
+static size_t encode_8bit_end(const void *src, size_t src_size, size_t src_offset, size_t symbols_to_encode, rmt_symbol_word_t *hw_symbols, bool *done, void *arg);
+
 typedef struct _rmt_obj_t
 {
-    rmt_channel_handle_t tx_chan;    // 通道对象
-    rmt_encoder_handle_t encoder;    // 编码器对象
-    rmt_transmit_config_t tx_config; // 发送配置
-    int free;                        // 发送计数
-    uint32_t max;                    // dac分辨率
-    uint32_t symbol_loop;            // 每字节持续多少符号
-    uint32_t zero;                   // 大概中心值
-    uint32_t symbol_max;             // 渐变头 + 数据的符号数量
-    int start_symbol;                // 渐变头 符号数量
-    int end_symbol;                  // 渐变 符号数量
-    int srart_ttt;                   // 头 渐变递增
-    int end_ttt;                     // 尾 渐变递增
+    rmt_channel_handle_t tx_chan;           // 通道对象
+    rmt_encoder_handle_t encoder;           // 编码器对象
+    rmt_transmit_config_t tx_config;        // 发送配置
+    int free;                               // 发送计数
+    uint32_t max_dpi;                       // dac分辨率
+    uint32_t symbol_loop;                   // 每字节持续多少符号
+    uint32_t encode_symbol_max;             // body中编码多少符号
+    int symbol_size;                        // 单个符号长度
+    rmt_symbol_word_t *padding_symbol_data; // 填充的数据地址
+    int padding_symbol_data_len;            // 填充数据的长度
+    int padding_0_xxx;                      // 缓存头和尾的千分比,0~1000
+    int padding_symbol_start_len;           // 本次发送,头部实际填充了多少个符号
+    int padding_time_us;                    // 0~100的渐变，填充多少时间
+
+    rmt_encode_simple_cb_t next_encode; // 当前回调到哪了
+
 } rmt_obj_t;
 
 // 原始数据
@@ -48,71 +55,95 @@ static size_t IRAM_ATTR encode_8bit(
     bool *done,                  // 传输完成标记
     void *arg_in)                // 自定义数据
 {
-
-    // 自定义参数
     rmt_obj_t *arg = (rmt_obj_t *)arg_in;
 
-    // 头渐变
-    if (this_len == 0)
+    // 可以删除这个if,这只是个保险
+    // 因为确切的知道,IDF不满意那些数据,终止回调,比较麻烦,也容易忘记
+    if (unlikely(this_len == 0)) // unlikely 此条件很少为真
     {
-        // 数据不够不编码
-        *done = false;
-        if (data_out_len < arg->start_symbol)
-        {
-            return 0;
-        }
-        // 需要编码器的的长度
-        arg->symbol_max = data_size * arg->symbol_loop + arg->start_symbol;
-        for (int i = 0; i < arg->start_symbol; i++)
-        {
-            data_out[i].level0 = 1;
-            data_out[i].level1 = 0;
-            data_out[i].duration0 = i * arg->srart_ttt / 1000 + 2;
-            data_out[i].duration1 = arg->max - data_out[i].duration0;
-        }
-        return arg->start_symbol;
+        arg->next_encode = encode_8bit_start;
     }
 
-    // 尾渐变
-    if (this_len == arg->symbol_max)
+    return arg->next_encode(data_in, data_size, this_len,
+                            data_out_len, data_out, done, arg);
+}
+
+static size_t IRAM_ATTR encode_8bit_start(
+    const void *data_in,         // 发送时传入的地址
+    size_t data_size,            // data长度，发送时传入的长度
+    size_t this_len,             // 当前发送到第几个符号了
+    size_t data_out_len,         // 本次可编码符号数量
+    rmt_symbol_word_t *data_out, // 本次写入地址
+    bool *done,                  // 传输完成标记
+    void *arg_in)                // 自定义数据
+{
+    *done = false;
+
+    // 传入的用户对象
+    rmt_obj_t *arg = (rmt_obj_t *)arg_in;
+
+    // 可编码数据不够直接返回
+    // 直接 判断 arg->padding_symbol_data_len，可以减少一次计算终止下标
+    // 如果第一次数据不够编码，第二次必然返回 >= arg->padding_symbol_data_len
+    // 小于arg->padding_symbol_data_len，大于我想编码的量，这种情况不存在，存在也就略微影响速度
+    if (data_out_len < arg->padding_symbol_data_len)
     {
-        *done = false;
-        if (data_out_len < arg->end_symbol)
-        {
-
-            return 0;
-        }
-
-        // esp_rom_printf(" %d  %d  \n", arg->end_symbol, data_out_len);
-        for (int i = 0; i < arg->end_symbol; i++)
-        {
-            data_out[i].level0 = 1;
-            data_out[i].level1 = 0;
-            data_out[i].duration0 = arg->zero - (i * arg->end_ttt / 1000) + 2;
-            data_out[i].duration1 = arg->max - data_out[i].duration0;
-        }
-
-        // *done = true;
-        return arg->end_symbol;
-    }
-
-    // 尾部BUG
-    if (this_len > arg->symbol_max)
-    {
-        *done = true;
         return 0;
     }
 
+    // 计算终止下标
+    uint8_t *data = (uint8_t *)data_in;    // 百分比数据位置
+    int t = data[0] * 1000 / arg->max_dpi; // 下标的大概千分比
+    if (t >= arg->padding_0_xxx)           // 缓存的填充数据不够，那么填充所有数据
+    {
+        // 缓存的填充数据不够，那么填充所有数据即可
+        arg->padding_symbol_start_len = arg->padding_symbol_data_len;
+    }
+    else
+    {
+        // 由于填充的数据是2tick开始的，所以此处还需要回退几个下标
+        // 不过影响不大，有时间在计算需要回退几个下标
+        // 不对，上面方法不划算
+        // 回退不如，遍历到下一个 padding_symbol_data 的具体值精度高，遍历几个数据值还可以恢复除法丢失的精度
+        arg->padding_symbol_start_len = arg->padding_symbol_data_len * t / arg->padding_0_xxx;
+    }
+
+    // 编码
+    memcpy(data_out, arg->padding_symbol_data, arg->padding_symbol_start_len * arg->symbol_size);
+
+    // 编码数据时需要使用，访问应该比每次都计算快吧？？？
+    arg->encode_symbol_max = data_size * arg->symbol_loop;
+    // 指向编码函数
+    arg->next_encode = encode_8bit_work;
+    return arg->padding_symbol_start_len;
+}
+
+static size_t IRAM_ATTR encode_8bit_work(
+    const void *data_in,         // 发送时传入的地址
+    size_t data_size,            // data长度，发送时传入的长度
+    size_t this_len,             // 当前发送到第几个符号了
+    size_t data_out_len,         // 本次可编码符号数量
+    rmt_symbol_word_t *data_out, // 本次写入地址
+    bool *done,                  // 传输完成标记
+    void *arg_in)                // 自定义数据
+{
+    // 自定义参数
+    rmt_obj_t *arg = (rmt_obj_t *)arg_in;
+
+    // 当前长度减掉头部
+    this_len -= arg->padding_symbol_start_len;
+
     // 本次可以编码多少符号
     uint32_t send_len = data_out_len - data_out_len % arg->symbol_loop; // 可以编码数据
-    if (send_len + this_len > arg->symbol_max)                          // 不要超过，剩余数据
+    if (unlikely(send_len + this_len >= arg->encode_symbol_max))        // 不要超过，剩余数据
     {
-        send_len = arg->symbol_max - this_len;
+        send_len = arg->encode_symbol_max - this_len; // 隐含了最后一个必然是对齐symbol_loop的条件
+        arg->next_encode = encode_8bit_end;
     }
     uint32_t char_len = send_len / arg->symbol_loop;
 
     // 数据当前处理到什么位置
-    size_t data_i = this_len / arg->symbol_loop - (arg->start_symbol / arg->symbol_loop);
+    size_t data_i = this_len / arg->symbol_loop;
 
     // 需要编码的数据
     char *data = (char *)data_in;
@@ -125,8 +156,8 @@ static size_t IRAM_ATTR encode_8bit(
     temp_data.level1 = 0;
     for (int i = 0; i < char_len; i++)
     {
-        temp_data.duration1 = arg->max - data[data_i + i];
-        temp_data.duration0 = arg->max - temp_data.duration1;
+        temp_data.duration0 = data[data_i + i];
+        temp_data.duration1 = arg->max_dpi - temp_data.duration0;
         for (int j = 0; j < arg->symbol_loop; j++)
         {
             (data_out++)->val = temp_data.val;
@@ -135,6 +166,72 @@ static size_t IRAM_ATTR encode_8bit(
 
     *done = false;
     return send_len;
+}
+
+static size_t IRAM_ATTR encode_8bit_end(
+    const void *data_in,         // 发送时传入的地址
+    size_t data_size,            // data长度，发送时传入的长度
+    size_t this_len,             // 当前发送到第几个符号了
+    size_t data_out_len,         // 本次可编码符号数量
+    rmt_symbol_word_t *data_out, // 本次写入地址
+    bool *done,                  // 传输完成标记
+    void *arg_in)                // 自定义数据
+{
+    // 自定义参数
+    rmt_obj_t *arg = (rmt_obj_t *)arg_in;
+
+    // 防止回调卡在此处，在别处复位没有这里划算
+    //      1、不过在这里处理可能丢一次数据，可编码空间足够还是返回0，此次传输会被IDF关闭
+    //      2、如果在start中死亡，那么下次还是在start上。
+    //      3、如果上次在body中死亡，那么下次只是会丢掉头部，前提是在此处重置 symbol_max
+    //          a、不对如果在body中死亡那么，也需要重置 symbol_max，在body中需要重置，所有优势都没了，还是在切换状态处强制重置算了
+    //      4、如果在end中死亡才会出现问题，不过可以通过this_len==0返回start状态
+    // if (this_len == 0)
+    // {
+    //     *done = false;
+    //     arg->next_encode = encode_8bit_start;
+    //     return 0;
+    // }
+
+    // 尾部BUG,需要进行一次空调用
+    if (this_len > arg->encode_symbol_max + arg->padding_symbol_start_len)
+    {
+        *done = true;
+        arg->next_encode = encode_8bit_start;
+        return 0;
+    }
+
+    // 可编码器空间不够
+    *done = false;
+    if (data_out_len < arg->padding_symbol_data_len)
+    {
+        return 0;
+    }
+
+    // 需要编码的长度
+    uint8_t *data = (uint8_t *)data_in;                // 百分比数据位置
+    int t = data[data_size - 1] * 1000 / arg->max_dpi; // 下标的大概千分比
+    int end;
+    if (t >= arg->padding_0_xxx)
+    {
+
+        end = arg->padding_symbol_data_len;
+    }
+    else
+    {
+        end = arg->padding_symbol_data_len * t / arg->padding_0_xxx; // 终止下标
+    }
+
+    // 编码
+    rmt_symbol_word_t *src = (rmt_symbol_word_t *)arg->padding_symbol_data;
+    rmt_symbol_word_t *dest = (rmt_symbol_word_t *)data_out;
+    for (size_t i = 0; i < end; i++)
+    {
+        // 从源的末尾取，存到目标的开头
+        dest[i] = src[end - 1 - i];
+    }
+
+    return end;
 }
 
 // 发送完成的回调函数
@@ -147,44 +244,59 @@ static bool IRAM_ATTR rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const r
 }
 
 // 创建通道
+// 此函数需要拆分,否则不方便处理new失败时,需要释放部分资源的情况
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 {
 
     // 获取python传入变量
-    int gpio = mp_obj_get_int(args[0]); // rmt引脚
-    // int data_len_t = mp_obj_get_int(args[1]);
+    int gpio = mp_obj_get_int(args[0]);              // rmt引脚
     int queue_len = mp_obj_get_int(args[1]);         // 发送队列长度
-    int mem_block_symbols = mp_obj_get_int(args[2]); // GPIO缓存
+    int mem_block_symbols = mp_obj_get_int(args[2]); // GPIO缓存符号数
     int dma = mp_obj_get_int(args[3]);               // 是否dma
     int intr_priority = mp_obj_get_int(args[4]);     // 中断优先级
     int is_od = mp_obj_get_int(args[5]);             // false 时推挽
     int encode_id = mp_obj_get_int(args[6]);         // 选择编码器
-    int dac_max = mp_obj_get_int(args[7]);           // dac分辨率
+    int max_dpi = mp_obj_get_int(args[7]);           // dac分辨率
     int symbol_loop = mp_obj_get_int(args[8]);       // 每字节等于多少符号
-    int hed_symbol = mp_obj_get_int(args[9]);        // 头填充多少个dac数据
-    int end_symbol = mp_obj_get_int(args[10]);       // 尾填充多少个dac数据
+    int padding_time_us = mp_obj_get_int(args[9]);   // 填充时间
+    int padding_0_xxx = mp_obj_get_int(args[10]);    // 填充千分比
 
     // 返回对象
     rmt_obj_t *rmt = malloc(sizeof(rmt_obj_t));
-    rmt->free = 0;
-    rmt->symbol_loop = symbol_loop;
-    rmt->max = dac_max;
-    rmt->zero = dac_max / 2;
-    rmt->start_symbol = rmt->symbol_loop * hed_symbol;
-    rmt->end_symbol = rmt->symbol_loop * end_symbol;
-    rmt->srart_ttt = rmt->zero * 1000 / rmt->start_symbol;
-    rmt->end_ttt = rmt->zero * 1000 / rmt->end_symbol;
-
-    int ttt = rmt->srart_ttt;
-    if (ttt < rmt->end_symbol)
-    {
-        ttt = rmt->end_symbol;
-    }
-
     if (!rmt)
     {
         mp_raise_msg(&mp_type_Exception, MP_ERROR_TEXT("malloc_ret_p_error"));
     }
+    rmt->free = 0;
+    rmt->max_dpi = max_dpi;
+    rmt->symbol_loop = symbol_loop;
+    rmt->symbol_size = sizeof(rmt_symbol_word_t);
+    rmt->padding_time_us = padding_time_us * 1000;
+    rmt->padding_0_xxx = padding_0_xxx;
+    rmt->padding_symbol_data_len = rmt->max_dpi * 12.5; // 单个周期时间
+    rmt->padding_symbol_data_len =                      // 需要周期数
+        rmt->padding_time_us / rmt->padding_symbol_data_len *
+        rmt->padding_0_xxx / 1000;
+    rmt->padding_symbol_data =
+        heap_caps_calloc_prefer(                   // 申请填充空间
+            rmt->padding_symbol_data_len,          // 元素个数
+            rmt->symbol_size,                      // 元素大小
+            2,                                     // 备选方案个数
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, // 内部SRAM,8bit访问
+            MALLOC_CAP_SPIRAM);                    // 外部PSRAM
+    // 每个周期递增值
+    int tt = (rmt->max_dpi - 3);            // 修正max，为了保证填充数据大于2tick
+    tt = tt * rmt->padding_0_xxx;           // 填充到多少占空比
+    tt = tt / rmt->padding_symbol_data_len; // 平均每个需要填充多少值
+
+    for (int i = 0; i < rmt->padding_symbol_data_len; i++) // 填充缓存
+    {
+        rmt->padding_symbol_data[i].duration0 = tt * i / 1000 + 2;
+        rmt->padding_symbol_data[i].level0 = 1;
+        rmt->padding_symbol_data[i].duration1 = rmt->max_dpi - rmt->padding_symbol_data[i].duration0;
+        rmt->padding_symbol_data[i].level1 = 0;
+    }
+    rmt->next_encode = encode_8bit_start; // 回调函数起点
 
     // 通道配置
     rmt_tx_channel_config_t tx_chan_config = {
@@ -222,20 +334,30 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
         rmt_copy_encoder_config_t copy_encoder_config = {};
         err = rmt_new_copy_encoder(&copy_encoder_config, &rmt->encoder);
     }
-    else if (encode_id == 2) // 需要在else中执行,避免未定义编码器情况
+    else if (encode_id == 2)
     {
 
         rmt_simple_encoder_config_t simple_encoder_config = {
-            .callback = encode_8bit, // 编码器回调
-            .arg = rmt,              // 传入数据
-            .min_chunk_size = ttt,   // 多少数据不编码，回调死亡
+            .callback = encode_8bit,                        // 编码器回调
+            .arg = rmt,                                     // 传入数据
+            .min_chunk_size = rmt->padding_symbol_data_len, // 多少数据不编码，回调死亡
         };
         err = rmt_new_simple_encoder(&simple_encoder_config, &rmt->encoder);
     }
+    else // 默认8bit编码器
+    {
+        rmt_simple_encoder_config_t simple_encoder_config = {
+            .callback = encode_8bit,                        // 编码器回调
+            .arg = rmt,                                     // 传入数据
+            .min_chunk_size = rmt->padding_symbol_data_len, // 多少数据不编码，回调死亡
+        };
+        err = rmt_new_simple_encoder(&simple_encoder_config, &rmt->encoder);
+    }
+
     if (err != ESP_OK)
     {
         mp_raise_msg_varg(
-            &mp_type_Exception, MP_ERROR_TEXT("creaet_copy_encoder_error: %d"), err);
+            &mp_type_Exception, MP_ERROR_TEXT("creaet_encoder_error: %d"), err);
     }
 
     // 发送配置

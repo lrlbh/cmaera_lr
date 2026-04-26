@@ -49,10 +49,9 @@ WIFI().conn_one()
 # rmt_sync_client()
 
 
-
 def rmt_sync_client():
     # 初始化 RMT
-    rmt = rmt_lr.new_rmt(21, 2, 2046, 1, 0, 0, 2, 255, 7, 64, 64)
+    rmt = rmt_lr.new_rmt(21, 2, 2046, 1, 0, 0, 2, 255, 13, 2_400, 600)
 
     buf1 = bytearray(1024 * 100)
     # buf1[:] = bytes([0x80]) * len(buf1)
@@ -84,4 +83,4 @@ def rmt_sync_client():
             time.sleep_us(100)
 
 
-# rmt_sync_client()
+rmt_sync_client()
