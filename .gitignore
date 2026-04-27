@@ -1,4 +1,6 @@
 # /.vscode/
+# c_mod智能提示
+/py_mod/test/
 /open_code/*
 /res/
 *.bin

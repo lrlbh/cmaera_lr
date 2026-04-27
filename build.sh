@@ -10,7 +10,7 @@ c_mod="USER_C_MODULES=$HOME/test_build/camera_lr/c_mod/micropython.cmake"
 # 远程py_mod目录
 py_mod="FROZEN_MANIFEST=$HOME/test_build/camera_lr/py_mod/manifest.py"
 # 本地Cmod目录
-c_mod_lod="/mnt/c/Users/82542/code/py/Micropython/mod/camera_lr/"
+c_mod_lod="/mnt/c/Users/82542/code/py/Micropython/camera_lr/"
 
 
 
