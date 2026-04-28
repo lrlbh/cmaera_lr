@@ -7,7 +7,8 @@ target_sources(usermod_lr INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/wifi_lr.c
     ${CMAKE_CURRENT_LIST_DIR}/rmt_lr.c
     ${CMAKE_CURRENT_LIST_DIR}/free_lr.c
-    ${CMAKE_CURRENT_LIST_DIR}/adc_lr.c
+    ${CMAKE_CURRENT_LIST_DIR}/adc/adc_lr.c
+    ${CMAKE_CURRENT_LIST_DIR}/adc/adc_cali.c
 )
 
 # 扩展依赖

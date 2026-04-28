@@ -1,5 +1,4 @@
-import adc_lr
-import lib_lsl
+import adc_cali_lr
 
 
 def get_支持的校准模式() -> str:
@@ -8,7 +7,7 @@ def get_支持的校准模式() -> str:
 
     # 当时没注意看，IDF校准方式=0时，err != ESP_OK
     # 所以现在，不支持校准时会抛出error ESP_ERR_NOT_SUPPORTED
-    t = adc_lr.get_adc_cali()
+    t = adc_cali_lr.get_adc_cali()
 
     支持 = []
     不支持 = []

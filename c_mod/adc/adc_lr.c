@@ -1,4 +1,3 @@
-#include "esp_adc/adc_cali.h"
 #include "py/runtime.h"
 #include "py/obj.h"
 #include "esp_adc/adc_continuous.h"
@@ -215,18 +214,7 @@ static mp_obj_t adc_start(mp_obj_t adc_in)
     return mp_const_none;
 }
 
-static mp_obj_t get_adc_cali()
-{
-    adc_cali_scheme_ver_t scheme_mask;
-    esp_err_t err = adc_cali_check_scheme(&scheme_mask);
 
-    if (err != ESP_OK)
-    {
-        mp_raise_msg_varg(&mp_type_Exception, MP_ERROR_TEXT("query_adc_cali_err: %d"), err);
-    }
-
-    return mp_obj_new_int(scheme_mask);
-}
 
 // 在下方提供注册到mpy的代码,模块名: adc_lr,static用小写
 // 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
@@ -241,7 +229,6 @@ static mp_obj_t get_adc_cali()
 // ========== MicroPython 模块注册 ==========
 
 // 定义参数数量
-static MP_DEFINE_CONST_FUN_OBJ_0(get_adc_cali_obj, get_adc_cali);
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(new_adc_obj, 10, 10, new_adc);
 static MP_DEFINE_CONST_FUN_OBJ_2(adc_read_obj, adc_read);
 static MP_DEFINE_CONST_FUN_OBJ_1(adc_close_obj, adc_close);
@@ -255,7 +242,6 @@ static const mp_rom_map_elem_t adc_lr_module_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR_adc_close), MP_ROM_PTR(&adc_close_obj)},
     {MP_ROM_QSTR(MP_QSTR_adc_stop), MP_ROM_PTR(&adc_stop_obj)},
     {MP_ROM_QSTR(MP_QSTR_adc_start), MP_ROM_PTR(&adc_start_obj)},
-    {MP_ROM_QSTR(MP_QSTR_get_adc_cali), MP_ROM_PTR(&get_adc_cali_obj)},
 };
 static MP_DEFINE_CONST_DICT(adc_lr_module_globals, adc_lr_module_globals_table);
 
