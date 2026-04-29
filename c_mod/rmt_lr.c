@@ -288,7 +288,6 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     int tt = (rmt->max_dpi - 3);            // 修正max，为了保证填充数据大于2tick
     tt = tt * rmt->padding_0_xxx;           // 填充到多少占空比
     tt = tt / rmt->padding_symbol_data_len; // 平均每个需要填充多少值
-
     for (int i = 0; i < rmt->padding_symbol_data_len; i++) // 填充缓存
     {
         rmt->padding_symbol_data[i].duration0 = tt * i / 1000 + 2;
