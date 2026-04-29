@@ -19,9 +19,9 @@ wsl ./build.sh
 Check-ExitCode
 
 Write-Host "擦除"
-esptool --port COM21  erase_flash 
+esptool --port COM21  erase-flash 
 Check-ExitCode
 
 Write-Host "烧录"
-esptool --port COM21 write_flash -z 0x0  ./firmware.bin
+esptool --port COM21 write-flash -z 0x0  ./firmware.bin
 Check-ExitCode

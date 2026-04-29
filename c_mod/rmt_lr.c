@@ -3,9 +3,9 @@
 #include "py/obj.h"
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
 
 // 待处理
-// 拆分new,或者优化赋值，让PY可以处理new时部分成功，申请了部分数据的情况
 // 提高渐变精度，具体方法见代码注释
 
 static size_t encode_8bit_start(const void *src, size_t src_size, size_t src_offset, size_t symbols_to_encode, rmt_symbol_word_t *hw_symbols, bool *done, void *arg);
@@ -17,7 +17,9 @@ typedef struct _rmt_obj_t
     rmt_channel_handle_t tx_chan;           // 通道对象
     rmt_encoder_handle_t encoder;           // 编码器对象
     rmt_transmit_config_t tx_config;        // 发送配置
-    int free;                               // 发送计数
+    volatile int free;                      // 发送计数,编译器看不到回调中的修改???所以需要volatile
+    portMUX_TYPE spinlock;                  // 一个用于关闭开启中断的变量
+                                            // AI说中断不能让出CPU,让出CPU后中断就死亡了,无法恢复执行,所以不能用锁
     uint32_t max_dpi;                       // dac分辨率
     uint32_t symbol_loop;                   // 每字节持续多少符号
     uint32_t encode_symbol_max;             // body中编码多少符号
@@ -243,8 +245,100 @@ static bool IRAM_ATTR rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const r
     return false;
 }
 
+// 释放资源
+static void _rmt_close(rmt_obj_t *rmt)
+{
+
+    // 停止通道
+    // 理论上来说未曾en成功的通道不能调用停止通道
+    // 不过我让ai验证了rmt_disable的实现,对en失败的通道停止,只会返回错误,无其他影响
+    // 所以就不标记en是否成功了
+    if (rmt->tx_chan)
+    {
+        rmt_disable(rmt->tx_chan);
+    }
+
+    // 释放编码器
+    if (rmt->encoder)
+    {
+        rmt_del_encoder(rmt->encoder);
+        rmt->encoder = NULL;
+    }
+
+    // 释放通道
+    if (rmt->tx_chan)
+    {
+        rmt_del_channel(rmt->tx_chan);
+        rmt->tx_chan = NULL;
+    }
+
+    // 释放填充数据
+    if (rmt->padding_symbol_data)
+    {
+        heap_caps_free(rmt->padding_symbol_data);
+        rmt->padding_symbol_data = NULL;
+    }
+
+    // 释放对象
+    free(rmt);
+}
+
+// // 预留,万一需要排查
+// static void _rmt_close(rmt_obj_t *rmt)
+// {
+
+//     esp_err_t err;
+
+//     // 停止通道
+//     if (rmt->tx_chan)
+//     {
+//         err = rmt_disable(rmt->tx_chan);
+//         if (err != ESP_OK)
+//         {
+//             mp_raise_msg_varg(
+//                 &mp_type_Exception,
+//                 MP_ERROR_TEXT("rmt_close,stop_channel_error: %d"), err);
+//         }
+//     }
+
+//     // 释放编码器
+//     if (rmt->encoder)
+//     {
+//         err = rmt_del_encoder(rmt->encoder);
+//         if (err != ESP_OK)
+//         {
+//             mp_raise_msg_varg(
+//                 &mp_type_Exception,
+//                 MP_ERROR_TEXT("rmt_close,delete_encoder_error: %d"), err);
+//         }
+//         rmt->encoder = NULL;
+//     }
+
+//     // 释放通道
+//     if (rmt->tx_chan)
+//     {
+//         esp_err_t err = rmt_del_channel(rmt->tx_chan);
+//         if (err != ESP_OK)
+//         {
+//             mp_raise_msg_varg(
+//                 &mp_type_Exception,
+//                 MP_ERROR_TEXT("rmt_close,delete_channel_error: %d"), err);
+//         }
+//         rmt->tx_chan = NULL;
+//     }
+
+//     // 释放填充数据
+//     if (rmt->padding_symbol_data)
+//     {
+//         heap_caps_free(rmt->padding_symbol_data);
+//         rmt->padding_symbol_data = NULL;
+//     }
+
+//     // 释放对象
+//     free(rmt);
+// }
+
 // 创建通道
-// 此函数需要拆分,否则不方便处理new失败时,需要释放部分资源的情况
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 {
 
@@ -263,10 +357,14 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 
     // 返回对象
     rmt_obj_t *rmt = malloc(sizeof(rmt_obj_t));
-    if (!rmt)
+    if (rmt == NULL)
     {
-        mp_raise_msg(&mp_type_Exception, MP_ERROR_TEXT("malloc_ret_p_error"));
+        mp_raise_msg(&mp_type_Exception, MP_ERROR_TEXT("new_rmt_malloc_ret_p_error"));
     }
+    rmt->tx_chan = NULL;
+    rmt->encoder = NULL;
+    rmt->padding_symbol_data = NULL;
+    rmt->spinlock = (portMUX_TYPE)portMUX_INITIALIZER_UNLOCKED;
     rmt->free = 0;
     rmt->max_dpi = max_dpi;
     rmt->symbol_loop = symbol_loop;
@@ -284,10 +382,15 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
             2,                                     // 备选方案个数
             MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, // 内部SRAM,8bit访问
             MALLOC_CAP_SPIRAM);                    // 外部PSRAM
+    if (!rmt->padding_symbol_data)
+    {
+        _rmt_close(rmt);
+        mp_raise_msg(&mp_type_Exception, MP_ERROR_TEXT("new_rmt_padding_symbol_data_error"));
+    }
     // 每个周期递增值
-    int tt = (rmt->max_dpi - 3);            // 修正max，为了保证填充数据大于2tick
-    tt = tt * rmt->padding_0_xxx;           // 填充到多少占空比
-    tt = tt / rmt->padding_symbol_data_len; // 平均每个需要填充多少值
+    int tt = (rmt->max_dpi - 3);                           // 修正max，为了保证填充数据大于2tick
+    tt = tt * rmt->padding_0_xxx;                          // 填充到多少占空比
+    tt = tt / rmt->padding_symbol_data_len;                // 平均每个需要填充多少值
     for (int i = 0; i < rmt->padding_symbol_data_len; i++) // 填充缓存
     {
         rmt->padding_symbol_data[i].duration0 = tt * i / 1000 + 2;
@@ -315,6 +418,7 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     esp_err_t err = rmt_new_tx_channel(&tx_chan_config, &rmt->tx_chan);
     if (err != ESP_OK)
     {
+        _rmt_close(rmt);
         mp_raise_msg_varg(
             &mp_type_Exception, MP_ERROR_TEXT("creaet_chan_error: %d"), err);
     }
@@ -323,6 +427,7 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     err = rmt_enable(rmt->tx_chan);
     if (err != ESP_OK)
     {
+        _rmt_close(rmt);
         mp_raise_msg_varg(
             &mp_type_Exception, MP_ERROR_TEXT("en_chan_error: %d"), err);
     }
@@ -355,6 +460,7 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 
     if (err != ESP_OK)
     {
+        _rmt_close(rmt);
         mp_raise_msg_varg(
             &mp_type_Exception, MP_ERROR_TEXT("creaet_encoder_error: %d"), err);
     }
@@ -373,6 +479,7 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     err = rmt_tx_register_event_callbacks(rmt->tx_chan, &cbs, rmt);
     if (err != ESP_OK)
     {
+        _rmt_close(rmt);
         mp_raise_msg_varg(
             &mp_type_Exception,
             MP_ERROR_TEXT("add_cbs_error: %d"), err);
@@ -413,6 +520,13 @@ static mp_obj_t rmt_get_symbol_size()
 }
 
 // 停止通道
+static mp_obj_t rmt_close(mp_obj_t rmt_in)
+{
+    _rmt_close((rmt_obj_t *)mp_obj_get_uint(rmt_in));
+    return mp_const_none;
+}
+
+// 停止通道
 static mp_obj_t rmt_stop_channel(mp_obj_t rmt_in)
 {
     rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
@@ -421,13 +535,17 @@ static mp_obj_t rmt_stop_channel(mp_obj_t rmt_in)
     // 只影响发送中的数据正确，不影响资源释放，-1阻塞等待
     // rmt_tx_wait_all_done(rmt->tx_chan, -1);
 
-    esp_err_t err = rmt_disable(rmt->tx_chan);
-    if (err != ESP_OK)
+    if (rmt->tx_chan)
     {
-        mp_raise_msg_varg(
-            &mp_type_Exception,
-            MP_ERROR_TEXT("rmt_free,stop_channel_error: %d"), err);
+        esp_err_t err = rmt_disable(rmt->tx_chan);
+        if (err != ESP_OK)
+        {
+            mp_raise_msg_varg(
+                &mp_type_Exception,
+                MP_ERROR_TEXT("rmt_free,stop_channel_error: %d"), err);
+        }
     }
+
     return mp_const_none;
 }
 
@@ -482,7 +600,9 @@ static mp_obj_t rmt_get_free(mp_obj_t rmt_in)
 static mp_obj_t rmt_sub_free(mp_obj_t rmt_in, mp_obj_t val_in)
 {
     rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
+    portENTER_CRITICAL(&rmt->spinlock);
     rmt->free -= mp_obj_get_int(val_in);
+    portEXIT_CRITICAL(&rmt->spinlock);
     return mp_const_none;
 }
 
