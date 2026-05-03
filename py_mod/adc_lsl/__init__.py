@@ -1,2 +1,2 @@
 # 导出类，少一级访问路径,内部不生效
-from .adc import ADC_连续
+from .adc import ADC_连续  # noqa: F401
