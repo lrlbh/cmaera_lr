@@ -27,7 +27,7 @@ static mp_obj_t new_adc(size_t n_args, const mp_obj_t *args)
     esp_err_t err;
 
     // 获取python传入变量
-    mp_obj_list_t *gpio = MP_OBJ_TO_PTR(args[0]);      // adc通道，-1后值刚好等于S3引脚
+    mp_obj_list_t *channel = MP_OBJ_TO_PTR(args[0]);   // adc通道
     int mem_buf_size = mp_obj_get_int(args[1]);        // 内部缓冲区大小 字节 帧的2倍以上
     int frame_buf_size = mp_obj_get_int(args[2]);      // 帧大小 字节 每个adc值4字节
     int flush_flag = mp_obj_get_int(args[3]);          //  缓冲区满了的行为
@@ -66,17 +66,17 @@ static mp_obj_t new_adc(size_t n_args, const mp_obj_t *args)
     }
 
     // 每个通道的采样参数
-    adc_digi_pattern_config_t adc_pattern[gpio->len];
-    for (size_t i = 0; i < gpio->len; i++)
+    adc_digi_pattern_config_t adc_pattern[channel->len];
+    for (size_t i = 0; i < channel->len; i++)
     {
-        adc_pattern[i].channel = mp_obj_get_int(gpio->items[i]) - 1;
+        adc_pattern[i].channel = mp_obj_get_int(channel->items[i]);
         adc_pattern[i].atten = mp_obj_get_int(atten->items[i]);
         adc_pattern[i].unit = mp_obj_get_int(unit->items[i]);
         adc_pattern[i].bit_width = mp_obj_get_int(bit_width->items[i]);
     }
     adc_continuous_config_t cont_cfg = {
-        .pattern_num = gpio->len,   // 使用的GPIO数量
-        .adc_pattern = adc_pattern, // 每个通道的采样参数
+        .pattern_num = channel->len, // 使用的GPIO数量
+        .adc_pattern = adc_pattern,  // 每个通道的采样参数
         .sample_freq_hz = sample_freq,
         .conv_mode = conv_mode,
         .format = format, // 输出数据格式,S3只有TYPE2,4字节
@@ -213,8 +213,6 @@ static mp_obj_t adc_start(mp_obj_t adc_in)
 
     return mp_const_none;
 }
-
-
 
 // 在下方提供注册到mpy的代码,模块名: adc_lr,static用小写
 // 必须必须必须!!!C函数名 == PY函数名!!!必须必须必须
