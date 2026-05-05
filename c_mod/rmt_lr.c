@@ -283,60 +283,6 @@ static void _rmt_close(rmt_obj_t *rmt)
     free(rmt);
 }
 
-// // 预留,万一需要排查
-// static void _rmt_close(rmt_obj_t *rmt)
-// {
-
-//     esp_err_t err;
-
-//     // 停止通道
-//     if (rmt->tx_chan)
-//     {
-//         err = rmt_disable(rmt->tx_chan);
-//         if (err != ESP_OK)
-//         {
-//             mp_raise_msg_varg(
-//                 &mp_type_Exception,
-//                 MP_ERROR_TEXT("rmt_close,stop_channel_error: %d"), err);
-//         }
-//     }
-
-//     // 释放编码器
-//     if (rmt->encoder)
-//     {
-//         err = rmt_del_encoder(rmt->encoder);
-//         if (err != ESP_OK)
-//         {
-//             mp_raise_msg_varg(
-//                 &mp_type_Exception,
-//                 MP_ERROR_TEXT("rmt_close,delete_encoder_error: %d"), err);
-//         }
-//         rmt->encoder = NULL;
-//     }
-
-//     // 释放通道
-//     if (rmt->tx_chan)
-//     {
-//         esp_err_t err = rmt_del_channel(rmt->tx_chan);
-//         if (err != ESP_OK)
-//         {
-//             mp_raise_msg_varg(
-//                 &mp_type_Exception,
-//                 MP_ERROR_TEXT("rmt_close,delete_channel_error: %d"), err);
-//         }
-//         rmt->tx_chan = NULL;
-//     }
-
-//     // 释放填充数据
-//     if (rmt->padding_symbol_data)
-//     {
-//         heap_caps_free(rmt->padding_symbol_data);
-//         rmt->padding_symbol_data = NULL;
-//     }
-
-//     // 释放对象
-//     free(rmt);
-// }
 
 // 创建通道
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
