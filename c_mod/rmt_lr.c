@@ -583,6 +583,9 @@ MP_DEFINE_CONST_FUN_OBJ_1(rmt_delete_channel_obj, rmt_delete_channel);
 // rmt_get_free(rmt_in) -> 1个参数
 MP_DEFINE_CONST_FUN_OBJ_1(rmt_get_free_obj, rmt_get_free);
 
+// rmt_close(rmt_in) -> 1个参数
+MP_DEFINE_CONST_FUN_OBJ_1(rmt_close_obj, rmt_close);
+
 // rmt_sub_free(rmt_in, val_in) -> 2个参数
 MP_DEFINE_CONST_FUN_OBJ_2(rmt_sub_free_obj, rmt_sub_free);
 
@@ -601,6 +604,7 @@ static const mp_rom_map_elem_t rmt_lr_module_globals_table[] = {
     {MP_ROM_QSTR(MP_QSTR_rmt_get_symbol_size), MP_ROM_PTR(&rmt_get_symbol_size_obj)},
     {MP_ROM_QSTR(MP_QSTR_rmt_stop_channel), MP_ROM_PTR(&rmt_stop_channel_obj)},
     {MP_ROM_QSTR(MP_QSTR_rmt_delete_encoder), MP_ROM_PTR(&rmt_delete_encoder_obj)},
+    {MP_ROM_QSTR(MP_QSTR_rmt_close), MP_ROM_PTR(&rmt_close_obj)},
     {MP_ROM_QSTR(MP_QSTR_rmt_delete_channel), MP_ROM_PTR(&rmt_delete_channel_obj)},
     {MP_ROM_QSTR(MP_QSTR_rmt_get_free), MP_ROM_PTR(&rmt_get_free_obj)},
     {MP_ROM_QSTR(MP_QSTR_rmt_sub_free), MP_ROM_PTR(&rmt_sub_free_obj)},
