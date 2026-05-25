@@ -111,7 +111,7 @@ html_data = (
 
 # 初始化摄像头
 print("开始初始化摄像头....")
-cam = cam_lsl.Cam(xclk=10, t图片分辨率=cam_lsl.t参数.t图片分辨率.t_1280x720, xclk_freq=20_000_000,
+cam = cam_lsl.Cam(xclk=10, t图片分辨率=cam_lsl.t参数.t图片分辨率.t_1280x720, xclk_freq=15_000_000,
                   t图片格式=cam_lsl.t参数.t图片格式.jpeg,)
 # cam.set_分辨率(cam_lsl.t参数.t图片分辨率.t_1280x720)
 print(f"hts: {cam.get_hts()}  vts: {cam.get_vts()}")
