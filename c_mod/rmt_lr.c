@@ -61,10 +61,10 @@ static size_t IRAM_ATTR encode_8bit(
 
     // 可以删除这个if,这只是个保险
     // 因为确切的知道,IDF不满意那些数据,终止回调,比较麻烦,也容易忘记
-    if (unlikely(this_len == 0)) // unlikely 此条件很少为真
-    {
-        arg->next_encode = encode_8bit_start;
-    }
+    // if (unlikely(this_len == 0)) // unlikely 此条件很少为真
+    // {
+    //     arg->next_encode = encode_8bit_start;
+    // }
 
     return arg->next_encode(data_in, data_size, this_len,
                             data_out_len, data_out, done, arg);
@@ -241,7 +241,11 @@ static bool IRAM_ATTR rmt_on_transmit_done(rmt_channel_handle_t tx_chan, const r
 {
     // 计数，用于用户逻辑中回收内存
     rmt_obj_t *this = (rmt_obj_t *)user_ctx;
+
+    portENTER_CRITICAL_ISR(&this->spinlock);
     ++this->free;
+    portEXIT_CRITICAL_ISR(&this->spinlock);
+
     return false;
 }
 
@@ -283,7 +287,6 @@ static void _rmt_close(rmt_obj_t *rmt)
     free(rmt);
 }
 
-
 // 创建通道
 static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
 {
@@ -321,13 +324,20 @@ static mp_obj_t new_rmt(size_t n_args, const mp_obj_t *args)
     rmt->padding_symbol_data_len =                      // 需要周期数
         rmt->padding_time_us / rmt->padding_symbol_data_len *
         rmt->padding_0_xxx / 1000;
+    // rmt->padding_symbol_data =
+    //     heap_caps_calloc_prefer(                   // 申请填充空间
+    //         rmt->padding_symbol_data_len,          // 元素个数
+    //         rmt->symbol_size,                      // 元素大小
+    //         2,                                     // 备选方案个数
+    //         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, // 内部SRAM,8bit访问
+    //         MALLOC_CAP_SPIRAM);                    // 外部PSRAM
+
     rmt->padding_symbol_data =
-        heap_caps_calloc_prefer(                   // 申请填充空间
-            rmt->padding_symbol_data_len,          // 元素个数
-            rmt->symbol_size,                      // 元素大小
-            2,                                     // 备选方案个数
-            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, // 内部SRAM,8bit访问
-            MALLOC_CAP_SPIRAM);                    // 外部PSRAM
+        heap_caps_calloc(
+            rmt->padding_symbol_data_len,         // 元素个数
+            rmt->symbol_size,                     // 元素大小
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT // 严格限制：只能是内部SRAM，且支持8bit访问
+        );
     if (!rmt->padding_symbol_data)
     {
         _rmt_close(rmt);
@@ -546,8 +556,11 @@ static mp_obj_t rmt_get_free(mp_obj_t rmt_in)
 static mp_obj_t rmt_sub_free(mp_obj_t rmt_in, mp_obj_t val_in)
 {
     rmt_obj_t *rmt = (rmt_obj_t *)mp_obj_get_uint(rmt_in);
+
+    int val = mp_obj_get_int(val_in);
+
     portENTER_CRITICAL(&rmt->spinlock);
-    rmt->free -= mp_obj_get_int(val_in);
+    rmt->free -= val;
     portEXIT_CRITICAL(&rmt->spinlock);
     return mp_const_none;
 }

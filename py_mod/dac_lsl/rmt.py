@@ -18,7 +18,7 @@ class RMT:
         填充多少us=2400,  # 0~100的单边时间
         填充缓存最大值=666,  #  千分比
         freq_khz=20,
-        轮询间隔ms=5,
+        轮询间隔ms=0,
     ):
         self.free了没 = True
         self.轮询间隔ms = 轮询间隔ms
@@ -56,10 +56,9 @@ class RMT:
     def get_mem(self) -> bytearray:
         while True:
             可回收内存 = rmt_lr.rmt_get_free(self.rmt)
-
             for _ in range(可回收内存):
                 self.null_mem.append(self.send_mem.pop(0))
-            rmt_lr.rmt_sub_free(self.rmt, 可回收内存)
+                rmt_lr.rmt_sub_free(self.rmt, 1)
 
             if len(self.null_mem) > 0:
                 return self.null_mem.pop(0)
@@ -71,7 +70,7 @@ class RMT:
             可回收内存 = rmt_lr.rmt_get_free(self.rmt)
             for _ in range(可回收内存):
                 self.null_mem.append(self.send_mem.pop(0))
-            rmt_lr.rmt_sub_free(self.rmt, 可回收内存)
+                rmt_lr.rmt_sub_free(self.rmt, 1)
 
             if len(self.null_mem) > 0:
                 return self.null_mem.pop(0)
@@ -81,8 +80,8 @@ class RMT:
     # 长度需要用字节数,不能用数据个数
     def return_mem(self, data: bytearray, data_len: int = None, 忽略零长度=True):
 
-        # 拦截已知错误，发送数据长度为
-        # 默认寂寞处理该错误
+        # 拦截已知错误，发送数据长度为0
+        # 默认静默处理该错误
         if data_len == 0 and 忽略零长度:
             # 不发送，直接放回空闲列表
             self.null_mem.append(data)
@@ -90,6 +89,7 @@ class RMT:
 
         if data_len is None:
             data_len = len(data)
+
         self.send_mem.append(data)
         rmt_lr.rmt_send(self.rmt, data, data_len)
 
