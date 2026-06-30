@@ -42,7 +42,7 @@ typedef struct _rmt_obj_t
 //             .level1 = 0,
 //         };
 // 注意,在copy编码器中
-// data_out,必须被赋值，否则会进入胡乱的逻辑，包括当不限于乱传入 data_in 的地址
+// data_out,必须被赋值，否则会进入胡乱的逻辑，包括但不限于乱传入 data_in 的地址
 // 0tisk最好的结果就是让回调不受控的结束
 // 1tick == 32767tick
 // 所以最小2tick
