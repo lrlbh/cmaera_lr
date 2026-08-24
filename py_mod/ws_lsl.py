@@ -1,22 +1,24 @@
 import _thread
+import errno
 import machine
 import socket
 import binascii
 import hashlib
 import time
 
+import lib_lsl
+
 
 class WsSocket:
     def __init__(self, socket: socket.socket):
         self.socket = socket
+        self.timeout = None
 
     # 转接 socket 中的方法
     def __getattr__(self, name):
         return getattr(self.socket, name)
 
     def send_ws(self, data):
-        # 数据长度
-        data_len = len(data)
 
         # 构建头
         frame = bytearray()
@@ -29,6 +31,8 @@ class WsSocket:
         else:
             frame.append(0x82)
 
+        data_len = len(data)
+
         # ===== 第二个字节 + 扩展长度 =====
         if data_len <= 125:
             frame.append(data_len)
@@ -40,8 +44,131 @@ class WsSocket:
             frame.append(127)
             frame.extend(data_len.to_bytes(8, "big"))
 
-        self.socket.sendall(frame)
-        self.socket.sendall(data)
+        # 据说和python不同
+        # mpy的sendall在非阻塞下的行为是 undefined。
+        # 懒得处理,mpy推荐用write,阻塞发完,非阻塞自己保证
+        self.sendall(frame)
+        self.sendall(data)
+
+    # 返回一个编码后可以直接发送的bytes
+    @staticmethod
+    def get_msg(data):
+        if isinstance(data, str):
+            data = data.encode()
+            opcode = 0x81
+        else:
+            opcode = 0x82
+
+        data_len = len(data)
+
+        frame = bytearray()
+        frame.append(opcode)
+
+        if data_len <= 125:
+            frame.append(data_len)
+        elif data_len <= 0xFFFF:
+            frame.append(126)
+            frame.extend(data_len.to_bytes(2, "big"))
+        else:
+            frame.append(127)
+            frame.extend(data_len.to_bytes(8, "big"))
+
+        frame.extend(data)
+
+        return bytes(frame)
+
+    #  None(阻塞), 0(非阻塞), 或浮点数(秒)
+    def settimeout_lr(self, timeout):
+        self.timeout = timeout
+        self.settimeout(timeout)
+
+    def read_ws_temp(self):
+        """
+        图方便的非阻塞读取函数
+
+        没数据返回长度为0的数据 ""
+        有数据返回str或者bytes
+
+        没有处理错误情况的现场
+        如果报错,大概率上下文都错乱了
+        所以报错,外部就关掉这个套接字
+        """
+
+        # 临时设置为非阻塞
+        self.setblocking(False)
+
+        try:
+            b1 = self.recv(1)[0]
+        except OSError as e:
+            # if e.args[0] in (errno.EAGAIN, errno.EWOULDBLOCK):
+            if e.args[0] == errno.EAGAIN:
+                return ""
+            else:
+                raise
+
+        b2 = self.recv(1)[0]
+
+        # 要求 1 校验：检查 FIN 位（最高位），如果为 0 代表是分片帧
+        fin = (b1 & 0x80) != 0
+        if not fin:
+            raise Exception("没实现消息分片")
+
+        # 要求 2 校验：检查 Opcode（低4位）
+        opcode = b1 & 0x0F
+        if opcode != 0x1 and opcode != 0x2:
+            raise Exception("只支持str和bytes消息类型")
+
+        is_text = opcode == 0x1
+
+        is_masked = (b2 & 0x80) != 0
+        payload_len = b2 & 0x7F
+
+        # 解析扩展长度
+        if payload_len == 126:
+            ext = self.recv(2)
+            if not ext or len(ext) < 2:
+                raise Exception("读取消息长度失败,2字节扩展情况")
+            payload_len = int.from_bytes(ext, "big")
+        elif payload_len == 127:
+            ext = self.recv(8)
+            if not ext or len(ext) < 8:
+                raise Exception("读取消息长度失败,8字节扩展情况")
+            payload_len = int.from_bytes(ext, "big")
+
+        # 读取掩码 Key
+        mask_key = None
+        if is_masked:
+            mask_key = self.recv(4)
+            if not mask_key or len(mask_key) < 4:
+                raise Exception("读取掩码失败")
+
+        # 循环读取完整的 Payload 数据
+        data = bytearray()
+        while len(data) < payload_len:
+            chunk = self.recv(payload_len - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+
+        # 恢复套接字阻塞状态
+        self.settimeout_lr(self.timeout)
+
+        if len(data) < payload_len:
+            raise Exception("没有读取到完整消息")
+
+        # 如果有掩码，进行异或解码
+        if is_masked:
+            for i in range(payload_len):
+                data[i] ^= mask_key[i % 4]
+
+        # 转换为对应的数据类型返回
+        if is_text:
+            try:
+                return bytes(data).decode("utf-8")
+            except UnicodeError:
+                raise Exception("字符串消息,但解码为utf-8失败")
+        else:
+            return bytes(data)
 
 
 class t套接字上限行为:
@@ -163,8 +290,9 @@ class Server:
 
                 # 没有确认是否是http
                 return self.conn, self.addr
-            except:  # noqa: E722
+            except Exception as e:  
                 # print(e)
+                lib_lsl.send(e)
                 self.conn.close()
 
     # 手动获取一个ws连接,丢掉其他连接

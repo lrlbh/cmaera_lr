@@ -5,10 +5,97 @@ import hashlib
 import os
 import io
 import sys
+import socket
+import json
+import _thread
+
+
+def create_thread(func, args=(), kwargs=None, stack_size=0):
+    """
+    创建 MicroPython 线程
+
+    :param func: 线程执行函数
+    :param args: 位置参数(tuple)
+    :param kwargs: 关键字参数(dict)
+    :param stack_size: 线程栈大小(bytes) 0就是用默认大小,S3默认5K
+    """
+
+    if kwargs is None:
+        kwargs = {}
+
+    # 设置后续创建线程的栈大小
+    _thread.stack_size(stack_size)
+
+    # 创建线程
+    return _thread.start_new_thread(func, args, kwargs)
+
+
+def read_exact(sock, length):
+    """
+    tcp一次读够
+    """
+    data = bytearray(length)
+    view = memoryview(data)
+
+    offset = 0
+
+    while offset < length:
+        n = sock.readinto(view[offset:])
+
+        if n is None:
+            continue
+
+        if n == 0:
+            raise OSError("socket closed")
+
+        offset += n
+
+    return data
+
+
+def readinto_exact(sock, buf, length=None):
+    """
+    TCP一次读取够
+    """
+    if length is None:
+        length = len(buf)
+
+    view = memoryview(buf)
+
+    offset = 0
+
+    while offset < length:
+        n = sock.readinto(view[offset:length])
+
+        if n is None:
+            continue
+
+        if n == 0:
+            raise OSError("socket closed")
+
+        offset += n
+
+    return offset
+
+
+def get_ip_更新服务器(广播端口=50000):
+    """
+    返回: ip,更新端口,日志端口
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("0.0.0.0", 广播端口))
+        while True:
+            data, addr = sock.recvfrom(1024)
+            data = json.loads(data.decode())
+            return addr[0], data["更新端口"], data["日志端口"]
+    finally:
+        sock.close()
 
 
 def file_exists(path):
-    """ 判断文件是否存在 """
+    """判断文件是否存在"""
     try:
         os.stat(path)
         return True
@@ -39,6 +126,7 @@ def build_url(base, path, params=None):
     - path = "/中文接口地址"
     - params字典中的key和value会进行URL编码
     """
+
     def url_encode(s):
         if not isinstance(s, str):
             s = str(s)
@@ -46,7 +134,12 @@ def build_url(base, path, params=None):
         for ch in s:
             code = ord(ch)
             # RFC3986 unreserved: A-Z a-z 0-9 -_.~
-            if (48 <= code <= 57) or (65 <= code <= 90) or (97 <= code <= 122) or ch in "-_.~":
+            if (
+                (48 <= code <= 57)
+                or (65 <= code <= 90)
+                or (97 <= code <= 122)
+                or ch in "-_.~"
+            ):
                 res.append(ch)
             else:
                 for b in ch.encode("utf-8"):
@@ -59,8 +152,7 @@ def build_url(base, path, params=None):
 
     # 处理查询参数
     if params:
-        query = "&".join(
-            f"{url_encode(k)}={url_encode(v)}" for k, v in params.items())
+        query = "&".join(f"{url_encode(k)}={url_encode(v)}" for k, v in params.items())
         url += "?" + query
 
     return url
@@ -68,7 +160,7 @@ def build_url(base, path, params=None):
 
 def get_完整错误信息(e):
     buf = io.StringIO()
-    sys.print_exception(e, buf) # type: ignore
+    sys.print_exception(e, buf)  # type: ignore
     s = buf.getvalue()
     buf.close()
 
@@ -119,6 +211,7 @@ def get_files_md5(root_dir, ignore_list=None):
                 result["/" + rel_path] = binascii.hexlify(h.digest()).decode()
 
     return result
+
 
 # def get_files_md5(root_dir, ignore_list=None):
 #     """

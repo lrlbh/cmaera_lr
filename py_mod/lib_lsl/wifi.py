@@ -6,7 +6,7 @@ import _thread
 
 try:
     import wifilr
-except:  # noqa: E722
+except:
     pass
 
 
@@ -33,7 +33,7 @@ class WIFI:
         },
         v6公网=False,
         static=False,
-        ip="192.168.1.189",
+        ip="192.168.1.188",
         子网掩码="255.255.255.0",
         网关="192.168.1.1",
         dns_server="192.168.1.1",
@@ -92,7 +92,7 @@ class WIFI:
         for 单个周围信号 in 周围信号:
             try:
                 ssid = 单个周围信号[0].decode("utf-8")
-            except:  # noqa: E722
+            except:
                 continue
             if ssid in self.account:
                 ret_acc[ssid] = self.account[ssid]  # type: ignore

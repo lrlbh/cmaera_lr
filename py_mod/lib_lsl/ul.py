@@ -3,18 +3,6 @@ import socket
 
 class _udp_log:
     def __init__(self):
-
-        # try:
-        #     with open("/no_delete/ip.txt", "r") as f:
-        #         ip = f.read().strip()
-        # except:
-        #     ip = None
-
-        # # 文件存在才允许发送
-        # self.ok = False
-        # if tl.file_exists("/boot_run.py") or tl.file_exists("/Alr/boot_run.py"):
-        #     self.ok = True
-
         self.udp_print = False
         self.ip = None
         self.port = 50002
@@ -25,12 +13,17 @@ class _udp_log:
         self.err = "error_lr "
         self.ok = "ok_lr "
 
-    def set_addr(self, ip=None, port=None):
+    # 配置日志对象,来启用打印
+    def set_config(self, ip=None, port=None, udp=True, print_lr=False):
         if ip is not None:
             self.ip = ip
         if port is not None:
             self.port = port
 
+        self.udp_print = udp
+        self.print = print_lr
+
+    # 所有外部访问函数统一调用此函数
     def _send(self, *args, hed=""):
 
         if self.print:
@@ -41,11 +34,13 @@ class _udp_log:
             try:
                 msg = " ".join(map(str, args))
                 self.sock.sendto(
-                    "{}{} {}".format(hed, self._cnt, msg).encode(), (self.ip, self.port)
+                    f"{hed}{self._cnt} {msg}".encode(),
+                    (self.ip, self.port),
                 )
-            except:  # noqa: E722
+            except:
                 pass
 
+    # 不同函数加个不同的头,方便UI显示颜色
     def send(self, *args):
         self._send(*args)
 
@@ -62,10 +57,11 @@ class _udp_log:
         self._send(*args, hed=self.ok)
 
 
+# 实例化对象
 _ul = _udp_log()
 
-
-set_addr = _ul.set_addr
+# 外部接口
+set_config = _ul.set_config
 send = _ul.send
 send_war = _ul.send_war
 send_err = _ul.send_err

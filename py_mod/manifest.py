@@ -12,6 +12,7 @@ package("cam_lsl", base_path=".")  # type: ignore  # noqa: F821
 package("lcd_lsl", base_path=".")  # type: ignore  # noqa: F821
 package("lib_lsl", base_path=".")  # type: ignore  # noqa: F821
 package("dac_lsl", base_path=".")  # type: ignore  # noqa: F821
+package("adc_lsl", base_path=".")  # type: ignore  # noqa: F821
 
 
 # # 继承 ESP32 官方默认 frozen 配置
