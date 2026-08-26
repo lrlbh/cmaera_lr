@@ -1,7 +1,16 @@
 {
     "python.analysis.extraPaths": [
-        // "C:\\Users\\82542\\test_include\\mpy_user_include",
-        "./py_mod",
-        "./py_mod/c_mod智能提示",
+        "C:\\Users\\82542\\code\\py\\MicroPython\\camera_lr\\py_mod",
+        "C:\\Users\\82542\\code\\py\\MicroPython\\camera_lr\\py_mod\\c_mod智能提示"
     ],
+    "ruff.lint.ignore": [
+        "BLE001", // 过于宽泛的异常捕获
+        "F401", // 未使用的导入
+        "I001", // import 没有排序、格式化
+        "S110", // 错误处理被pass了
+        "B006", // 可变对象作为了默认参数
+        "TRY002", // 抛出错误没有使用合理的类型
+        "E722", // 不允许裸except
+        "S112" // 没有处理异常,直接continue了
+    ]
 }

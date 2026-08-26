@@ -15,7 +15,7 @@
             ],
             "includePath": [
                 "${workspaceFolder}/**",
-                "C:\\Users\\82542\\code\\py\\MicroPython\\mod\\camera_lr\\**",
+                "C:\\Users\\82542\\code\\py\\MicroPython\\camera_lr\\**",
                 /* toolchain libc */
                 "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/picolibc/include",
                 /* ESP-IDF 基础 */
