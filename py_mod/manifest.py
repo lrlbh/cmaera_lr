@@ -5,6 +5,7 @@ include("$(PORT_DIR)/boards/manifest.py")  # type: ignore  # noqa: F821
 module("ws_lsl.py")  # type: ignore  # noqa: F821
 module("boot.py")  # type: ignore  # noqa: F821
 module("boot_run.py")  # type: ignore  # noqa: F821
+module("boot_config.py")  # type: ignore  # noqa: F821
 
 
 # 2. 冻结包 (Package)
