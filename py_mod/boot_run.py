@@ -127,9 +127,7 @@ def 子线程():
     lib_lsl.set_config(ip=ip, port=日志端口, udp=True)
 
     # 打印累积日志
-    lib_lsl.send_war("\n\n\n11111111111")
-    lib_lsl.send_war("\n\n\n11111111111")
-    lib_lsl.send_war("\n\n\n11111111111")
+    lib_lsl.send_war(f"\n\n\n{'-' * 99}")
     lib_lsl.send_war(t_log)
     # lib_lsl.send_war(id(wifi))
     lib_lsl.send_war(
@@ -238,7 +236,7 @@ def run():
     except Exception as e:
         # 用户错误返回完整错误信息
         lib_lsl.send_err(tl.get_完整错误信息(e))
-        return
+        raise Exception("异常结束,但避免系统调用main")
 
     lib_lsl.send("脚本正常结束")
     raise Exception("正常结束,但避免系统调用main")

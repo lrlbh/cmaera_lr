@@ -27,6 +27,7 @@ dns_server = "192.168.1.1"
 忽略的文件和目录 = [
     # "lib_lsl",
     # "boot.py",
+    # "boot_config.py",
     # "boot_run.py",
     "no_sync",
     "__pycache__",
@@ -51,8 +52,8 @@ dns_server = "192.168.1.1"
 
 # boot_pin 本功能
 #   1.判断是否运行boot.py
-#       强上拉运行boot.py
-#       浮空不运行boot.py
+#       浮空运行boot.py
+#       强上拉不运行boot.py
 #       下拉进入下载模式,与此脚本无关
 #       可用其他引脚,不过和boot引脚无冲突
 #   2.简单驱动rgb灯珠,用于判断boot.py运行状态
