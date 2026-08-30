@@ -7,13 +7,25 @@ from collections import deque
 
 # 用锁替代sleep,实现阻塞通讯
 class Queue:
-    def __init__(self, max_len=30, 每个数据处理耗时ms=0.69):
+    # >>> object() == object()
+    # False
+    # >>> a = object()
+    # >>> a == a
+    # True
+    # object值比较也是false,eq应该是地址比较,不用担心和用户数据冲突
+    TIMEOUT = object()
+
+    def __init__(self, max_len=30, 每个数据处理耗时ms=0.69, 读超时轮询间隔ms=27):
         # 数据结构
         self.max_len = max_len
         self.data = deque((), max_len)
 
         # 正常不会延迟，只有dqueue数据要溢出了才会触发
-        self.满数据时等待时间 = max(3, int(max_len * 每个数据处理耗时ms))
+        # 限制到,最小3ms,最大100ms
+        self.写满数据时轮询间隔ms = min(max(3, int(max_len * 每个数据处理耗时ms)), 100)
+
+        # 阻塞版本
+        self.读超时轮询间隔ms = 读超时轮询间隔ms
 
         # 数据锁
         self.lock = _thread.allocate_lock()
@@ -30,14 +42,14 @@ class Queue:
                 self.data.append(item)
 
                 # 0 -> 1，唤醒消费者
-                if len(self.data) == 1:  # append负责,阻塞解锁
+                if len(self.data) == 1:  # append负责阻塞解锁
                     self.event.release()
 
                 self.lock.release()
                 return
 
             self.lock.release()
-            time.sleep_ms(self.满数据时等待时间)
+            time.sleep_ms(self.写满数据时轮询间隔ms)
 
     def popleft(self):
         # 无数据时阻塞
@@ -48,7 +60,33 @@ class Queue:
         item = self.data.popleft()
 
         # 还有数据，唤醒下一个消费者
-        if len(self.data) > 0:  # popleft负责,阻塞加锁
+        if self.data:  # popleft负责阻塞加锁
+            self.event.release()
+
+        self.lock.release()
+
+        return item
+
+    # 带选择超时的取数据，sleep版本
+    def popleft_timeout_test(self, timeout_ms=1000):
+
+        if timeout_ms is None:
+            self.event.acquire()
+
+        else:
+            end = time.ticks_add(time.ticks_ms(), timeout_ms)
+            while not self.event.acquire(0):
+                剩余等待时间 = time.ticks_diff(end, time.ticks_ms())
+                if 剩余等待时间 <= 0:
+                    return Queue.TIMEOUT
+                time.sleep_ms(min(剩余等待时间, self.读超时轮询间隔ms))
+
+        self.lock.acquire()
+
+        item = self.data.popleft()
+
+        # 还有数据，唤醒下一个消费者
+        if self.data:  # popleft负责阻塞加锁
             self.event.release()
 
         self.lock.release()
@@ -59,12 +97,10 @@ class Queue:
 # ============================================================
 # 测试
 # ============================================================
-
-
-def Queue_test(
+def test(
     queue_max_len=30,  # queue最大长度
-    read_thread_num=9,  # 生产线程数量
-    write_thread_num=9,  # 消费线程数量
+    read_thread_num=6,  # 生产线程数量
+    write_thread_num=6,  # 消费线程数量
     thread_data_num=360,  # 每个线程处理多少个数据
 ):
 
@@ -245,6 +281,7 @@ def Queue_test(
     # ========================================================
 
     def consumer(consumer_id):
+        z = 0
 
         nonlocal consume_count
         nonlocal consumer_finished
@@ -253,7 +290,15 @@ def Queue_test(
         log("消费者 {} 启动".format(consumer_id))
 
         while True:
-            item = q.popleft()
+            z += 1
+            if z % 2:
+                item = q.popleft_timeout_test()
+            else:
+                item = q.popleft()
+
+            if item is Queue.TIMEOUT:
+                lib_lsl.send("触发取数据超时")
+                continue
 
             # None 是结束标记
             if item is None:
