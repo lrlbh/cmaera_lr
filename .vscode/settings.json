@@ -16,5 +16,6 @@
         "DTZ005", // datetime.now() 没携带时区参数
         "FURB122", // 循环中使用f.write
         "FLY002", // 用f-string,替换join拼接字符串
+        "UP032", // 别用format用f-string
     ]
 }
