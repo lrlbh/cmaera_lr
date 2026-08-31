@@ -10,12 +10,13 @@
         "S110", // 错误处理被pass了
         "B006", // 可变对象作为了默认参数
         "TRY002", // 抛出错误没有使用合理的类型
-        "E722", // 不允许裸except
+        "E722", // 抛出错误时，直接抛 "裸" 基类异常
         "S112", // 没有处理异常,直接continue了
         "SIM115", // 用with open 别用open
         "DTZ005", // datetime.now() 没携带时区参数
         "FURB122", // 循环中使用f.write
         "FLY002", // 用f-string,替换join拼接字符串
         "UP032", // 别用format用f-string
+        "TRY004", // 抛出错误时，类型检查失败没用,TypeError`
     ]
 }
