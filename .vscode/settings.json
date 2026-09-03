@@ -3,6 +3,8 @@
         "C:\\Users\\82542\\code\\py\\MicroPython\\camera_lr\\py_mod",
         "C:\\Users\\82542\\code\\py\\MicroPython\\camera_lr\\py_mod\\c_mod智能提示"
     ],
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 500,
     "ruff.lint.ignore": [
         "BLE001", // 过于宽泛的异常捕获
         "F401", // 未使用的导入
@@ -18,5 +20,6 @@
         "FLY002", // 用f-string,替换join拼接字符串
         "UP032", // 别用format用f-string
         "TRY004", // 抛出错误时，类型检查失败没用,TypeError`
+        "RUF012", // 初始化的东西，用了可变类型
     ]
 }
