@@ -7,27 +7,6 @@ import io
 import sys
 import socket
 import json
-import _thread
-
-
-def create_thread(func, args=(), kwargs=None, stack_size=0):
-    """
-    创建 MicroPython 线程
-
-    :param func: 线程执行函数
-    :param args: 位置参数(tuple)
-    :param kwargs: 关键字参数(dict)
-    :param stack_size: 线程栈大小(bytes) 0就是用默认大小,S3默认5K
-    """
-
-    if kwargs is None:
-        kwargs = {}
-
-    # 设置后续创建线程的栈大小
-    _thread.stack_size(stack_size)
-
-    # 创建线程
-    return _thread.start_new_thread(func, args, kwargs)
 
 
 def read_exact(sock, length):
