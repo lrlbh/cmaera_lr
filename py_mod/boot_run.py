@@ -169,7 +169,7 @@ def 子线程():
         rgb.write()
 
         # 创建读线程
-        tl.create_thread(read, (sock, 需要查看的文件), stack_size=4096)
+        lib_lsl.Thread.create_thread(read, (sock, 需要查看的文件), stack_size=4096)
 
         # 发
         # 增加一个，一百万是发送文件
@@ -223,7 +223,7 @@ def run():
         return
 
     # 子线程用于更新
-    _thread.start_new_thread(子线程, ())
+    lib_lsl.Thread.create_thread(子线程, (), stack_size=4096)
     # 子线程()
 
     # 获取到server_ip后在运行main
