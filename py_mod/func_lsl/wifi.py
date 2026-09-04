@@ -1112,7 +1112,7 @@ html = """
 
 </html>
 """.encode()
-# with open("1.html", "rb") as f:
+# with open("1.html_lsl", "rb") as f:
 #     html = f.read()
 html = (
     b"HTTP/1.1 200 OK\r\n"
@@ -1249,10 +1249,6 @@ class 发送WIFI信号强度(protocol):
     # 协议锁
     lock = _thread.allocate_lock()
 
-    def __init__(self, sock, addr, protocols, context):
-        super().__init__(sock, addr, protocols, context)
-
-    @protocol.free_函数执行前触发自定义的垃圾回收
     def _run(self, msg):
         lib_lsl.send("进入ESP32发送wifi信号")
         with self.context:
@@ -1303,7 +1299,6 @@ class 空闲状态(protocol):
         super().__init__(sock, addr, protocols, context)
         self.num = 0
 
-    @protocol.free_函数执行前触发自定义的垃圾回收
     def _run(self, msg):
         with self.context:
             self.context.value = self
@@ -1332,6 +1327,7 @@ def read_lr(sock: ws_lsl.WsSocket, addr, protocols):
 
         # 将byte消息接收测速,丢掉此条消息即可,浏览器可以统计速度
         if isinstance(one_msg, (bytearray, memoryview)):
+            # lib_lsl.send(len(one_msg), "-->", bytes(one_msg).decode("utf-8"))
             continue
 
         # 协商测试接收包大小
@@ -1375,6 +1371,7 @@ def run():
 
         # ws请求 断开上一个连接,只向最新的连接发送
         while len(ws.ws):
+            # 只保留12线程,否则就等待
             with lib_lsl.Thread.thread_num:
                 if lib_lsl.Thread.thread_num.value > 12:
                     lib_lsl.send(
@@ -1383,8 +1380,10 @@ def run():
                     )
                     time.sleep(1)
                     continue
+
             lib_lsl.send(f"新的ws请求到达{time.time()}")
             if conn is not None:
+                lib_lsl.send("----------踢掉老连接")
                 conn.close()
             conn, addr = ws.ws.pop(0)
             pro, context = protocol.new_子对象(conn, addr)

@@ -28,6 +28,7 @@
                 "C:/Users/82542/test_include/esp-idf/components/freertos/FreeRTOS-Kernel/include",
                 /* 编译时生成 或 编译时下载依赖 */
                 "C:\\Users\\82542\\test_include\\include",
+                "C:\\Users\\82542\\test_include\\include\\genhdr",
                 /* MicroPython */
                 "C:/Users/82542/test_include/micropython/ports/esp32/**",
                 "C:/Users/82542/test_include/micropython",

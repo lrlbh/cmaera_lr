@@ -1,4 +1,3 @@
-import _thread
 import errno
 import machine
 import socket
@@ -8,6 +7,7 @@ import time
 
 import lib_lsl
 import lib_lsl.tl
+import tl_lr
 
 
 # 基于阻塞的WS套接字
@@ -225,20 +225,12 @@ class WsSocket:
             msg = memoryview(buf)[:msg_len]
 
         # 如果有掩码，进行异或解码
-        if is_masked:  # and is_str
-            for i in range(msg_len):
-                msg[i] ^= mask_key[i & 3]
-
-            # 测一下能否更快，若是有瓶颈写一个C函数处理
-            # m0, m1, m2, m3 = mask_key
-            # end = msg_len & ~3
-            # for i in range(0, end, 4):
-            #     msg[i] ^= m0
-            #     msg[i + 1] ^= m1
-            #     msg[i + 2] ^= m2
-            #     msg[i + 3] ^= m3
-            # for i in range(end, msg_len):
-            #     msg[i] ^= mask_key[i & 3]
+        if is_masked:  # and is_str:
+            # s = time.ticks_us()
+            # tl_lr.ws_mask_decode(msg, mask_key)
+            tl_lr.ws_mask_decode_2(msg, mask_key)
+            # e = time.ticks_diff(time.ticks_us(), s)
+            # lib_lsl.send(f"耗时: {e / 1000} ms")
 
         # 转换为对应的数据类型返回
         if is_str:

@@ -10,6 +10,7 @@ target_sources(usermod_lr INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/adc/adc_lr.c
     ${CMAKE_CURRENT_LIST_DIR}/adc/adc_cali.c
     ${CMAKE_CURRENT_LIST_DIR}/test_lr.c
+    ${CMAKE_CURRENT_LIST_DIR}/tl_lr.c
 )
 
 # 扩展依赖
