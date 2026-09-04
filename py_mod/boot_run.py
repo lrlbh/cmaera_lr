@@ -14,9 +14,6 @@ import boot_config
 from lib_lsl import tl
 
 
-需要查看的文件 = []
-
-
 # 收: 4字节文件个数 + [4字节文件名长度 + 文件名 + 4字节文件内容长度 + 文件内容] * 文件个数
 # 增加一个，一百万是查看文件申请,不合理协议化了
 # 因为除了查看应该不会增加了，使用内置脚本处理其他操作应该更合理
@@ -31,8 +28,7 @@ def read(sock, 需要查看的文件):
     try:
         while True:
             # 文件个数
-            file_n = tl.read_exact(sock, 4)
-            file_n = int.from_bytes(file_n, "big")
+            file_n = int.from_bytes(tl.read_exact(sock, 4), "big")
 
             # 重启
             if file_n == 0 and boot_config.无文件时_更新是否重启:
@@ -47,13 +43,13 @@ def read(sock, 需要查看的文件):
             if file_n == 1000000:
                 file_n = tl.read_exact(sock, 4)
                 file_n = int.from_bytes(file_n, "big")
-                for _ in range(file_n):
-                    file_name_len = int.from_bytes(tl.read_exact(sock, 4), "big")
-                    file_name = tl.read_exact(sock, file_name_len).decode()
-                    需要查看的文件.append(file_name)
-                    lib_lsl.send_war("申请查看文件:")
-                for file in 需要查看的文件:
-                    lib_lsl.send_war(f"\t {file}")
+                with 需要查看的文件:
+                    for _ in range(file_n):
+                        file_name_len = int.from_bytes(tl.read_exact(sock, 4), "big")
+                        file_name = tl.read_exact(sock, file_name_len).decode()
+                        需要查看的文件.append(file_name)
+                        lib_lsl.send_war("申请查看文件:")
+                        lib_lsl.send_war(f"\t {file_name}")
                 continue
 
             # 申请更新文件
@@ -145,11 +141,13 @@ def 子线程():
     file_md5 = struct.pack("!I", len(file_md5)) + file_md5
     lib_lsl.send_war(f"获取md5耗时: {time.ticks_diff(time.ticks_ms(), t0)} ms")
 
+    需要查看的文件 = lib_lsl.YZ([])
+
     # 维持更新套接字连接状态
-    global 需要查看的文件
     while True:
         rgb[0] = boot_config.rgb_msg.连接更新服务器中
         rgb.write()
+        time.sleep(0.5)
         lib_lsl.send_war("尝试一次tcp连接")
 
         # 建立tcp连接
@@ -180,10 +178,13 @@ def 子线程():
                 # 心跳间隔,先延迟不然服务器可能错误关闭连接
                 time.sleep_ms(boot_config.心跳间隔ms)
 
+                # 心跳
+                sock.write(file_md5)
+
                 # 向服务器发送文件
-                if 需要查看的文件:
-                    temp需要查看的文件 = 需要查看的文件.copy()  # 避免在发送过程中被修改
-                    需要查看的文件 = []
+                with 需要查看的文件:
+                    if not 需要查看的文件.value:
+                        continue
 
                     # 弄陀屎,因为不需要扩展协议了,这里一百万表示发送文件
                     # 据说不用sendall,因为阻塞套接字下完全相同
@@ -191,14 +192,16 @@ def 子线程():
                     sock.write(struct.pack("!I", 1000000))
 
                     # 发送文件个数
-                    sock.write(struct.pack("!I", len(temp需要查看的文件)))
+                    sock.write(struct.pack("!I", len(需要查看的文件.value)))
 
-                    for file_name in temp需要查看的文件:
+                    for file_name in 需要查看的文件.value:
+                        file_name_bytes = file_name.encode()
+
                         # 发送文件名长度
-                        sock.write(struct.pack("!I", len(file_name)))
+                        sock.write(struct.pack("!I", len(file_name_bytes)))
 
                         # 发送文件名
-                        sock.write(file_name.encode())
+                        sock.write(file_name_bytes)
 
                         # 发送文件内容长度 + 文件内容
                         with open(file_name, "rb") as f:
@@ -206,8 +209,7 @@ def 子线程():
                             sock.write(struct.pack("!I", len(file_content)))
                             sock.write(file_content)
 
-                # 心跳
-                sock.write(file_md5)
+                    需要查看的文件.value.clear()
 
         except Exception as e:
             lib_lsl.send_err(f"tcp断开: {tl.get_完整错误信息(e)}")
