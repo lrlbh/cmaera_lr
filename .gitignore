@@ -6,3 +6,4 @@
 /res/
 *.bin
 __pycache__
+*.html_lsl

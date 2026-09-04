@@ -1354,35 +1354,47 @@ def send_lr(sock: ws_lsl.WsSocket, addr, context):
             context.run_send()
 
 
-# 创建WS连接
-ws = ws_lsl.Server("0.0.0.0", 8000, 0).run_thr()
-conn: ws_lsl.WsSocket = None
-while True:
-    # http请求 回复网页
-    while len(ws.http):
-        lib_lsl.send("http连接处理 -> ")
-        client, _ = ws.http.pop(0)
-        try:
-            client.settimeout(0.5)
-            client.sendall(html)
-            lib_lsl.send("成功!")
-        except Exception as e:
-            lib_lsl.send(f"失败: \n{e}")
+def run():
 
-        client.close()
+    # 创建WS连接
+    ws = ws_lsl.Server("0.0.0.0", 8000, 0).run_thr()
+    conn: ws_lsl.WsSocket = None
+    while True:
+        # http请求 回复网页
+        while len(ws.http):
+            lib_lsl.send("http连接处理 -> ")
+            client, _ = ws.http.pop(0)
+            try:
+                client.settimeout(0.5)
+                client.sendall(html)
+                lib_lsl.send("成功!")
+            except Exception as e:
+                lib_lsl.send(f"失败: \n{e}")
 
-    # ws请求 断开上一个连接,只向最新的连接发送
-    while len(ws.ws):
-        lib_lsl.send(f"新的ws请求到达{time.time()}")
-        if conn is not None:
-            conn.close()
-        conn, addr = ws.ws.pop(0)
-        pro, context = protocol.new_子对象(conn, addr)
+            client.close()
 
-        lib_lsl.Thread.create_thread(read_lr, (conn, addr, pro), stack_size=6144)
-        lib_lsl.Thread.create_thread(send_lr, (conn, addr, context), stack_size=6144)
+        # ws请求 断开上一个连接,只向最新的连接发送
+        while len(ws.ws):
+            with lib_lsl.Thread.thread_num:
+                if lib_lsl.Thread.thread_num.value > 12:
+                    lib_lsl.send(
+                        f"当前线程数量大于: {lib_lsl.Thread.thread_num.value}",
+                        "--> 暂停新连接建立!",
+                    )
+                    time.sleep(1)
+                    continue
+            lib_lsl.send(f"新的ws请求到达{time.time()}")
+            if conn is not None:
+                conn.close()
+            conn, addr = ws.ws.pop(0)
+            pro, context = protocol.new_子对象(conn, addr)
 
-    time.sleep(0.1)
+            lib_lsl.Thread.create_thread(read_lr, (conn, addr, pro), stack_size=6144)
+            lib_lsl.Thread.create_thread(
+                send_lr, (conn, addr, context), stack_size=6144
+            )
+
+        time.sleep(0.1)
 
 
 """

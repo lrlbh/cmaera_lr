@@ -30,6 +30,8 @@ dns_server = "192.168.1.1"
     # "boot_config.py",
     # "boot_run.py",
     "no_sync",
+    "c_mod智能提示",
+    "test_lsl",
     "__pycache__",
     ".vscode",
     "Readme.md",
