@@ -7,6 +7,42 @@ import io
 import sys
 import socket
 import json
+import lib_lsl.ul
+
+
+def prin_tree(path="/", indent="", max_depth=None, show_hidden=False):
+    """打印目录树（MicroPython 版）
+
+    path        起始目录，默认根目录 "/"
+    indent      内部递归用，勿传
+    max_depth   最大递归深度，None 表示不限
+    show_hidden 是否显示以 . 开头的文件
+    """
+
+    if max_depth is not None and max_depth < 0:
+        return
+
+    # entries = sorted(os.listdir(path))
+    entries = os.listdir(path)
+
+    if not show_hidden:
+        entries = [e for e in entries if not e.startswith(".")]
+
+    items = []
+    for e in entries:
+        full = path.rstrip("/") + "/" + e
+        is_dir = bool(os.stat(full)[0] & 0x4000)  # S_IFDIR，失败直接抛
+        items.append((e, is_dir))
+
+    for name, is_dir in items:
+        lib_lsl.ul.send(indent + "├── " + name + ("/" if is_dir else ""))
+        if is_dir:
+            prin_tree(
+                path.rstrip("/") + "/" + name,
+                indent + "│    ",
+                None if max_depth is None else max_depth - 1,
+                show_hidden,
+            )
 
 
 def read_exact(sock, length):

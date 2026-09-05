@@ -1,6 +1,7 @@
 # /.vscode/
 # c_mod智能提示
 /py_mod/test/
+/py_mod/no_sync/
 /py_mod/main.py
 /open_code/*
 /res/

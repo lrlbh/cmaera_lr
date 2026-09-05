@@ -57,7 +57,7 @@ def delete_all(参考config=True):
             char = "└── " if last else "├── "
 
             if is_dir(full):
-                # 不进入目录
+                # 不
                 if 参考config and name in boot_config.忽略的文件和目录:
                     # lib_lsl.send(prefix + char + name + "/[忽略]")
                     continue
@@ -90,17 +90,12 @@ def delete_all(参考config=True):
             elif full in 删除集合:
                 # 确保失败情况下，打印在在前，ERROR抛出在后
                 lib_lsl.send(prefix + char + name)
-
                 os.remove(full)
-
                 删除文件数量 += 1
 
     lib_lsl.send("开始删除:")
 
-    try:
-        remove_tree("/")
-    except Exception as e:
-        lib_lsl.send_err(lib_lsl.tl.get_完整错误信息(e))
+    remove_tree("/")
 
     # -------------------不是我写的输出下校验看看---------------------
     lib_lsl.send("---------------------------------------------------")
@@ -123,31 +118,4 @@ def delete_all(参考config=True):
     lib_lsl.send("---------------------------------------------------")
     lib_lsl.send("剩余文件:")
 
-    def print_tree(path, prefix=""):
-        items = os.listdir(path)
-
-        items.sort()
-        total = len(items)
-        for idx, name in enumerate(items):
-            is_last = idx == total - 1
-            full = path + "/" + name
-            st = os.stat(full)
-            # 判断目录：st[0] & 0x4000
-            is_dir = False
-            if st and (st[0] & 0x4000):
-                is_dir = True
-            # 分支符号
-            branch = "└── " if is_last else "├── "
-            # 目录末尾加 /
-            display_name = name + "/" if is_dir else name
-            lib_lsl.send(prefix + branch + display_name)
-            # 如果是目录递归，生成下一层前缀
-            if is_dir:
-                # 最后一项用空格，非最后一项保留竖线 │
-                new_prefix = prefix + ("    " if is_last else "│   ")
-                print_tree(full, new_prefix)
-
-    try:
-        print_tree("/")
-    except Exception as e:
-        lib_lsl.send_err(lib_lsl.tl.get_完整错误信息(e))
+    lib_lsl.tl.prin_tree()
