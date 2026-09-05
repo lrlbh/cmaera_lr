@@ -146,6 +146,81 @@ def get_完整错误信息(e):
     return s
 
 
+def get_目录和文件的数量(path):
+    total_dir = 0
+    total_file = 0
+    for name in os.listdir(path):
+        full = path + "/" + name
+        st = os.stat(full)
+        if st[0] & 0x4000:
+            total_dir += 1
+            # 递归进入子目录
+            subd, subf = get_目录和文件的数量(full)
+            total_dir += subd
+            total_file += subf
+        else:
+            total_file += 1
+    return total_dir, total_file
+
+
+# 返回文件保证路径+名称 列表
+def get_files_path(path, ignore=None):
+
+    ret = []
+
+    if ignore is None:
+        ignore = []
+
+    ignore_set = set(ignore)
+
+    def walk(path):
+
+        try:
+            items = os.listdir(path)
+        except:
+            return
+
+        for name in items:
+            if name in ignore_set:
+                continue
+
+            if path == "/":
+                full_path = "/" + name
+            else:
+                full_path = path + "/" + name
+
+            try:
+                stat = os.stat(full_path)
+
+                # 目录
+                if stat[0] & 0x4000:
+                    walk(full_path)
+
+                # 文件
+                else:
+                    ret.append(full_path)
+
+            except:
+                pass
+
+    walk(path)
+
+    return ret
+
+
+# 返回文件名称列表
+def get_files_name(path, ignore=None):
+
+    paths = get_files_path(path, ignore)
+
+    ret = []
+
+    for p in paths:
+        ret.append(p[p.rfind("/") + 1 :])
+
+    return ret
+
+
 def get_files_md5(root_dir, ignore_list=None):
     ignore_set = set(ignore_list) if ignore_list else set()
     result = {}

@@ -53,9 +53,8 @@ def read(sock, 需要查看的文件):
                 continue
 
             # 申请更新文件
+            lib_lsl.send_war(f"需要更新文件数量:{file_n}")
             for _ in range(file_n):
-                lib_lsl.send_war(f"需要更新文件数量:{file_n}")
-
                 t0 = time.ticks_ms()
                 # 获取文件名
                 file_name_len = int.from_bytes(tl.read_exact(sock, 4), "big")
@@ -80,7 +79,7 @@ def read(sock, 需要查看的文件):
 
 
 # 子线程
-def 子线程():
+def 子线程(主线程开始运行):
 
     # 提示灯
     rgb = neopixel.NeoPixel(machine.Pin(boot_config.boot_pin, machine.Pin.OUT), 1)
@@ -141,13 +140,14 @@ def 子线程():
     file_md5 = struct.pack("!I", len(file_md5)) + file_md5
     lib_lsl.send_war(f"获取md5耗时: {time.ticks_diff(time.ticks_ms(), t0)} ms")
 
+    主线程开始运行[0] = True
+
     需要查看的文件 = lib_lsl.YZ([])
 
     # 维持更新套接字连接状态
     while True:
         rgb[0] = boot_config.rgb_msg.连接更新服务器中
         rgb.write()
-        time.sleep(0.5)
         lib_lsl.send_war("尝试一次tcp连接")
 
         # 建立tcp连接
@@ -225,11 +225,12 @@ def run():
         return
 
     # 子线程用于更新
-    lib_lsl.Thread.create_thread(子线程, (), stack_size=4096)
+    主线程开始运行 = [False]
+    lib_lsl.Thread.create_thread(子线程, (主线程开始运行,), stack_size=4096)
     # 子线程()
 
     # 获取到server_ip后在运行main
-    while lib_lsl._ul.ip is None:
+    while 主线程开始运行[0] is False:
         time.sleep_ms(50)
 
     # 主线程运行main
